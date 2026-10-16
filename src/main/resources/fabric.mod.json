@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "ksawu23",
+  "version": "${version}",
+  "name": "KSAWU23 Client Ana",
+  "description": "Klient na anarchie: GUI, trap detect, trap escape, auto dripstone, visuals.",
+  "environment": "client",
+  "entrypoints": { "client": ["pl.ksawu23.ana.Client"] },
+  "mixins": ["ksawu23.mixins.json"],
+  "depends": { "fabricloader": ">=0.16.0", "minecraft": "~1.21.4", "java": ">=21", "fabric-api": "*" }
+}
