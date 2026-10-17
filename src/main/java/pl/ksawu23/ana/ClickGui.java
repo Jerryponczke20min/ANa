@@ -58,7 +58,8 @@ public class ClickGui extends Screen {
     }
 
     // ---------- przeciaganie plikow na okno gry ----------
-    @Override
+       public void onFilesDropped(List<Path> paths) { filesDragged(paths); }
+
     public void filesDragged(List<Path> paths) {
         for (Path p : paths) {
             String n = p.getFileName().toString().toLowerCase();
