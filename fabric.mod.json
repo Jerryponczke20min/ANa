@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ksawu23",
-  "version": "${version}",
+  "version": "1.0.0",
   "name": "KSAWU23 Client Ana",
   "description": "Klient na anarchie: GUI, trap detect, trap escape, auto dripstone, visuals.",
   "environment": "client",
