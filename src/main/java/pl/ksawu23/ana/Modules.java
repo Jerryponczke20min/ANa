@@ -54,6 +54,14 @@ public final class Modules {
         reg(new Hacks.XrayEsp());
         reg(new Hacks.Sprint());
         reg(new Hacks.NoFall());
+        reg(new Hacks.MobEsp());
+        reg(new Hacks.AutoWeb());
+        reg(new Hacks.FpsBoost());
+        reg(new Hacks.CleanView());
+        reg(new Hacks.CoordsHud());
+        reg(new Hacks.AutoLog());
+        reg(new Waypoints.Mod());
+        reg(new SeedFinder.Mod());
         reg(new NoParticles());
         reg(new Fullbright());
         reg(new KeybindHud());
@@ -123,19 +131,23 @@ public final class Modules {
     public static class HitEffect extends Module {
         final Setting.Mode type = add(new Setting.Mode("Efekt", Util.PARTICLES, "CRIT"));
         final Setting.Num count = add(new Setting.Num("Ilosc", 1, 40, 1, 12));
+        final Setting.Mode shape = add(new Setting.Mode("Ksztalt", Util.SHAPES, "Wybuch"));
         HitEffect() { super("Hit Effect", "Combat"); }
-        public void spawn(Entity e) { Util.burst(e, type.value, count.value.intValue()); }
+        public void spawn(Entity e) { Util.burst(e, type.value, count.value.intValue(), shape.value); }
     }
 
     public static class KillEffect extends Module {
         final Setting.Mode type = add(new Setting.Mode("Efekt", Util.PARTICLES, "TOTEM"));
         final Setting.Num count = add(new Setting.Num("Ilosc", 5, 100, 5, 40));
+        final Setting.Mode shape = add(new Setting.Mode("Ksztalt", Util.SHAPES, "Spirala"));
+        final Setting.Bool lightning = add(new Setting.Bool("Blyskawica", false));
         public Entity target;
         KillEffect() { super("Kill Effect", "Combat"); }
         public void onTick() {
             if (target == null) return;
             if (target instanceof LivingEntity le && (le.isDead() || le.getHealth() <= 0 || target.isRemoved())) {
-                Util.burst(target, type.value, count.value.intValue());
+                Util.burst(target, type.value, count.value.intValue(), shape.value);
+                if (lightning.value) Util.lightning(target);
                 target = null;
             }
         }

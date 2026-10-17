@@ -25,12 +25,13 @@ public class Client implements ClientModInitializer {
     public void onInitializeClient() {
         Modules.init();
         Config.load();
+        Waypoints.load();
 
         openKey = KeyBindingHelper.registerKeyBinding(
                 new KeyBinding("key.ksawu23.gui", GLFW.GLFW_KEY_RIGHT_CONTROL, "category.ksawu23"));
 
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> Theme.load());
-        ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> Config.save());
+        ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> { Config.save(); Waypoints.save(); });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             while (openKey.wasPressed()) mc.setScreen(new ClickGui());

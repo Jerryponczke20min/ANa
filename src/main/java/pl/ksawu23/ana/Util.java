@@ -17,7 +17,10 @@ public final class Util {
 
     public static final List<String> TRAP_BLOCKS = List.of("obsidian", "crying_obsidian", "cobblestone", "stone",
             "deepslate", "end_stone", "netherite_block", "ender_chest", "cobweb", "bedrock");
-    public static final List<String> PARTICLES = List.of("CRIT", "FLAME", "HEART", "TOTEM", "SOUL", "END_ROD", "SPARK");
+    public static final List<String> PARTICLES = List.of("CRIT", "FLAME", "HEART", "TOTEM", "SOUL", "END_ROD", "SPARK",
+            "CHERRY", "DRAGON", "WITCH", "ENCHANT", "NOTE", "FIREWORK", "SNOW", "GLOW", "CLOUD", "VILLAGER",
+            "ANGRY", "EXPLOSION", "LAVA", "SCULK", "PORTAL");
+    public static final List<String> SHAPES = List.of("Wybuch", "Spirala", "Pierscien", "Slup");
 
     public static ParticleEffect particle(String n) {
         return switch (n) {
@@ -27,18 +30,64 @@ public final class Util {
             case "SOUL" -> ParticleTypes.SOUL_FIRE_FLAME;
             case "END_ROD" -> ParticleTypes.END_ROD;
             case "SPARK" -> ParticleTypes.ELECTRIC_SPARK;
+            case "CHERRY" -> ParticleTypes.CHERRY_LEAVES;
+            case "DRAGON" -> ParticleTypes.DRAGON_BREATH;
+            case "WITCH" -> ParticleTypes.WITCH;
+            case "ENCHANT" -> ParticleTypes.ENCHANT;
+            case "NOTE" -> ParticleTypes.NOTE;
+            case "FIREWORK" -> ParticleTypes.FIREWORK;
+            case "SNOW" -> ParticleTypes.SNOWFLAKE;
+            case "GLOW" -> ParticleTypes.GLOW;
+            case "CLOUD" -> ParticleTypes.CLOUD;
+            case "VILLAGER" -> ParticleTypes.HAPPY_VILLAGER;
+            case "ANGRY" -> ParticleTypes.ANGRY_VILLAGER;
+            case "EXPLOSION" -> ParticleTypes.EXPLOSION;
+            case "LAVA" -> ParticleTypes.LAVA;
+            case "SCULK" -> ParticleTypes.SCULK_SOUL;
+            case "PORTAL" -> ParticleTypes.PORTAL;
             default -> ParticleTypes.CRIT;
         };
     }
 
-    public static void burst(net.minecraft.entity.Entity e, String type, int count) {
+    public static void burst(net.minecraft.entity.Entity e, String type, int count) { burst(e, type, count, "Wybuch"); }
+
+    public static void burst(net.minecraft.entity.Entity e, String type, int count, String shape) {
+        ParticleEffect p = particle(type);
+        double h = e.getHeight();
         for (int i = 0; i < count; i++) {
-            mc.world.addParticle(particle(type),
-                    e.getX() + (Math.random() - 0.5) * e.getWidth(),
-                    e.getY() + Math.random() * e.getHeight(),
-                    e.getZ() + (Math.random() - 0.5) * e.getWidth(),
-                    (Math.random() - 0.5) * 0.3, Math.random() * 0.3, (Math.random() - 0.5) * 0.3);
+            double t = (double) i / count;
+            double x, y, z, vx = 0, vy = 0, vz = 0;
+            switch (shape) {
+                case "Spirala" -> {
+                    double a = t * Math.PI * 6;
+                    x = e.getX() + Math.cos(a) * 0.7; z = e.getZ() + Math.sin(a) * 0.7; y = e.getY() + t * h; vy = 0.02;
+                }
+                case "Pierscien" -> {
+                    double a = t * Math.PI * 2;
+                    x = e.getX() + Math.cos(a) * 0.9; z = e.getZ() + Math.sin(a) * 0.9; y = e.getY() + h / 2;
+                    vx = Math.cos(a) * 0.1; vz = Math.sin(a) * 0.1;
+                }
+                case "Slup" -> {
+                    x = e.getX() + (Math.random() - 0.5) * 0.4; z = e.getZ() + (Math.random() - 0.5) * 0.4;
+                    y = e.getY() + Math.random() * h; vy = 0.25 + Math.random() * 0.2;
+                }
+                default -> {
+                    x = e.getX() + (Math.random() - 0.5) * e.getWidth(); y = e.getY() + Math.random() * h;
+                    z = e.getZ() + (Math.random() - 0.5) * e.getWidth();
+                    vx = (Math.random() - 0.5) * 0.3; vy = Math.random() * 0.3; vz = (Math.random() - 0.5) * 0.3;
+                }
+            }
+            mc.world.addParticle(p, x, y, z, vx, vy, vz);
         }
+    }
+
+    public static void lightning(net.minecraft.entity.Entity e) {
+        try {
+            var l = new net.minecraft.entity.LightningEntity(net.minecraft.entity.EntityType.LIGHTNING_BOLT, mc.world);
+            l.setPosition(e.getPos());
+            l.setCosmetic(true);
+            mc.world.addEntity(l);
+        } catch (Exception ignored) {}
     }
 
     /** Najlepsze narzedzie z hotbara do danego bloku, -1 jesli brak. */

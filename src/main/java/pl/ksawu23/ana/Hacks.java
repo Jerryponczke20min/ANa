@@ -23,6 +23,15 @@ public final class Hacks {
         mc.player.setPitch((float) -Math.toDegrees(Math.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z))));
     }
 
+    static final List<String> TARGETS = List.of("Gracze", "Wrogie moby", "Przyjazne moby");
+
+    static boolean valid(Set<String> t, net.minecraft.entity.LivingEntity e) {
+        if (e instanceof net.minecraft.entity.decoration.ArmorStandEntity) return false;
+        if (e instanceof PlayerEntity p) return t.contains("Gracze") && !p.isSpectator();
+        if (e instanceof net.minecraft.entity.mob.Monster) return t.contains("Wrogie moby");
+        return t.contains("Przyjazne moby");
+    }
+
     static Matrix4f matrix(WorldRenderContext c) {
         return c.matrixStack() == null ? null : c.matrixStack().peek().getPositionMatrix();
     }
@@ -73,20 +82,41 @@ public final class Hacks {
     // ---------------- VISUALS ----------------
 
     public static class Tracers extends Module {
+        final Setting.Blocks targets = add(new Setting.Blocks("Cele", TARGETS, Set.of("Gracze")));
         final Setting.Num range = add(new Setting.Num("Zasieg", 16, 256, 8, 128));
+        boolean forced, prevBob = true;
+
         Tracers() { super("Tracers", "Visuals"); }
+
+        // wylaczamy bujanie kamery, zeby poczatek linii nie "plywal" podczas chodzenia
+        public void onTick() {
+            if (!forced) { prevBob = mc.options.getBobView().getValue(); forced = true; }
+            mc.options.getBobView().setValue(false);
+        }
+
+        public void onDisable() {
+            if (forced && mc.options != null) mc.options.getBobView().setValue(prevBob);
+            forced = false;
+        }
 
         public void onRender(WorldRenderContext c) {
             Matrix4f m = matrix(c);
             if (m == null) return;
             Vec3d cam = c.camera().getPos();
-            Vec3d start = mc.player.getRotationVec(1f).multiply(0.5);
+            Vec3d start = Vec3d.fromPolar(c.camera().getPitch(), c.camera().getYaw()).multiply(0.5);
+            float td = c.tickCounter().getTickDelta(false);
             RenderUtil.draw(m, b -> {
-                for (PlayerEntity p : mc.world.getPlayers()) {
-                    if (p == mc.player || !p.isAlive() || p.distanceTo(mc.player) > range.value) continue;
-                    float f = (float) Math.min(1.0, p.distanceTo(mc.player) / 60.0);
-                    int col = 0xFF000000 | ((int) (255 * (1 - f)) << 16) | ((int) (255 * f) << 8) | 0x40;
-                    Vec3d end = p.getLerpedPos(c.tickCounter().getTickDelta(false)).add(0, p.getHeight() / 2, 0).subtract(cam);
+                for (net.minecraft.entity.Entity en : mc.world.getEntities()) {
+                    if (!(en instanceof net.minecraft.entity.LivingEntity le) || le == mc.player || !le.isAlive() || !valid(targets.value, le)) continue;
+                    double dist = le.distanceTo(mc.player);
+                    if (dist > range.value) continue;
+                    int col;
+                    if (le instanceof PlayerEntity) {
+                        float f = (float) Math.min(1.0, dist / 60.0);
+                        col = 0xFF000000 | ((int) (255 * (1 - f)) << 16) | ((int) (255 * f) << 8) | 0x40;
+                    } else if (le instanceof net.minecraft.entity.mob.Monster) col = 0xFFFF8030;
+                    else col = 0xFF50FF50;
+                    Vec3d end = le.getLerpedPos(td).add(0, le.getHeight() / 2, 0).subtract(cam);
                     RenderUtil.line(b, m, start, end, col);
                 }
             });
@@ -227,6 +257,179 @@ public final class Hacks {
         public void onTick() {
             if (mc.player.fallDistance > 2.5f && !mc.player.isGliding())
                 mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.OnGroundOnly(true, mc.player.horizontalCollision));
+        }
+    }
+
+    // ---------------- NOWE ----------------
+
+    public static class MobEsp extends Module {
+        final Setting.Blocks targets = add(new Setting.Blocks("Cele", TARGETS, Set.of("Wrogie moby", "Przyjazne moby")));
+        final Setting.Num range = add(new Setting.Num("Zasieg", 16, 128, 8, 64));
+        MobEsp() { super("Mob ESP", "Visuals"); }
+
+        public void onRender(WorldRenderContext c) {
+            Matrix4f m = matrix(c);
+            if (m == null) return;
+            Vec3d cam = c.camera().getPos();
+            float td = c.tickCounter().getTickDelta(false);
+            RenderUtil.draw(m, b -> {
+                for (net.minecraft.entity.Entity en : mc.world.getEntities()) {
+                    if (!(en instanceof net.minecraft.entity.LivingEntity le) || le == mc.player || !le.isAlive() || !valid(targets.value, le)) continue;
+                    if (le.distanceTo(mc.player) > range.value) continue;
+                    int col = le instanceof PlayerEntity ? 0xFFFF4040 : le instanceof net.minecraft.entity.mob.Monster ? 0xFFFF8030 : 0xFF50FF50;
+                    Vec3d d = le.getLerpedPos(td).subtract(le.getPos());
+                    RenderUtil.box(b, m, le.getBoundingBox().offset(d.x - cam.x, d.y - cam.y, d.z - cam.z), col);
+                }
+            });
+        }
+    }
+
+    /** Auto Web: stawia pajeczyne pod nogami wybranych celow. */
+    public static class AutoWeb extends Module {
+        final Setting.Blocks targets = add(new Setting.Blocks("Cele", TARGETS, Set.of("Gracze")));
+        final Setting.Num range = add(new Setting.Num("Zasieg", 2, 4.5, 0.5, 4));
+        final Setting.Num delay = add(new Setting.Num("Opoznienie (tick)", 1, 20, 1, 4));
+        int cd, restore = -1;
+
+        AutoWeb() { super("Auto Web (Cobweb)", "Combat"); }
+
+        public void onTick() {
+            if (restore >= 0) { Util.select(restore); restore = -1; }
+            if (cd-- > 0) return;
+            net.minecraft.entity.LivingEntity t = null; double bd = Double.MAX_VALUE;
+            for (net.minecraft.entity.Entity en : mc.world.getEntities()) {
+                if (!(en instanceof net.minecraft.entity.LivingEntity le) || le == mc.player || !le.isAlive() || !valid(targets.value, le)) continue;
+                double d = mc.player.distanceTo(le);
+                if (d <= range.value && d < bd) { bd = d; t = le; }
+            }
+            if (t == null) return;
+            BlockPos pos = t.getBlockPos();
+            if (!mc.world.getBlockState(pos).isAir() || !Util.inReach(pos)) return;
+            int slot = Util.findHotbar(s -> s.isOf(net.minecraft.item.Items.COBWEB));
+            if (slot < 0) return;
+            int cur = mc.player.getInventory().selectedSlot;
+            Util.select(slot);
+            if (Util.place(pos, Direction.DOWN)) { restore = cur; cd = delay.value.intValue(); }
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static class FpsBoost extends Module {
+        final Setting.Bool shadows = add(new Setting.Bool("Wylacz cienie encji", true));
+        final Setting.Bool clouds = add(new Setting.Bool("Wylacz chmury", true));
+        final Setting.Bool fast = add(new Setting.Bool("Grafika FAST", true));
+        final Setting.Bool blend = add(new Setting.Bool("Biome blend 0", true));
+        final Setting.Bool limitView = add(new Setting.Bool("Limit dystansu renderu", false));
+        final Setting.Num view = add(new Setting.Num("Dystans renderu (max)", 2, 32, 1, 10));
+        final Setting.Bool limitEnt = add(new Setting.Bool("Limit dystansu encji", true));
+        final Setting.Num ent = add(new Setting.Num("Dystans encji", 0.5, 5, 0.25, 1.0));
+        boolean applied;
+        int t;
+        Object oClouds, oGraphics;
+        Boolean oShadow;
+        Integer oBlend, oView;
+        Double oEnt;
+
+        FpsBoost() { super("FPS Boost", "Visuals"); }
+
+        static void first(net.minecraft.client.option.SimpleOption raw) {
+            raw.setValue(((Enum<?>) raw.getValue()).getDeclaringClass().getEnumConstants()[0]);
+        }
+
+        public void onTick() {
+            var o = mc.options;
+            if (!applied) {
+                oShadow = o.getEntityShadows().getValue(); oClouds = o.getCloudRenderMode().getValue();
+                oGraphics = o.getGraphicsMode().getValue(); oBlend = o.getBiomeBlendRadius().getValue();
+                oView = o.getViewDistance().getValue(); oEnt = o.getEntityDistanceScaling().getValue();
+                applied = true;
+            }
+            if (t++ % 40 != 0) return;
+            if (shadows.value) o.getEntityShadows().setValue(false);
+            if (clouds.value) first((net.minecraft.client.option.SimpleOption) o.getCloudRenderMode());
+            if (fast.value) first((net.minecraft.client.option.SimpleOption) o.getGraphicsMode());
+            if (blend.value) o.getBiomeBlendRadius().setValue(0);
+            if (limitView.value) o.getViewDistance().setValue(Math.min(oView, view.value.intValue()));
+            if (limitEnt.value) o.getEntityDistanceScaling().setValue(Math.min(oEnt, ent.value));
+        }
+
+        public void onDisable() {
+            if (!applied) return;
+            var o = mc.options;
+            o.getEntityShadows().setValue(oShadow);
+            ((net.minecraft.client.option.SimpleOption) o.getCloudRenderMode()).setValue(oClouds);
+            ((net.minecraft.client.option.SimpleOption) o.getGraphicsMode()).setValue(oGraphics);
+            o.getBiomeBlendRadius().setValue(oBlend);
+            o.getViewDistance().setValue(oView);
+            o.getEntityDistanceScaling().setValue(oEnt);
+            applied = false;
+        }
+    }
+
+    /** Czysty widok: bez bujania kamery, trzesienia po obrazeniach i zmiany FOV. */
+    public static class CleanView extends Module {
+        final Setting.Bool noBob = add(new Setting.Bool("Bez bujania kamery", true));
+        final Setting.Bool noHurt = add(new Setting.Bool("Bez trzesienia po dmg", true));
+        final Setting.Bool noFov = add(new Setting.Bool("Bez zmiany FOV", true));
+        boolean applied;
+        Boolean oBob;
+        Double oHurt, oFov;
+
+        CleanView() { super("Czysty widok", "Visuals"); }
+
+        public void onTick() {
+            var o = mc.options;
+            if (!applied) {
+                oBob = o.getBobView().getValue(); oHurt = o.getDamageTiltStrength().getValue(); oFov = o.getFovEffectScale().getValue();
+                applied = true;
+            }
+            if (noBob.value) o.getBobView().setValue(false);
+            if (noHurt.value) o.getDamageTiltStrength().setValue(0.0);
+            if (noFov.value) o.getFovEffectScale().setValue(0.0);
+        }
+
+        public void onDisable() {
+            if (!applied) return;
+            var o = mc.options;
+            o.getBobView().setValue(oBob);
+            o.getDamageTiltStrength().setValue(oHurt);
+            o.getFovEffectScale().setValue(oFov);
+            applied = false;
+        }
+    }
+
+    public static class CoordsHud extends Module {
+        final Setting.Num x = add(new Setting.Num("X", 0, 900, 1, 4));
+        final Setting.Num y = add(new Setting.Num("Y", 0, 500, 1, 24));
+        final Setting.Num scale = add(new Setting.Num("Rozmiar", 0.6, 2.5, 0.1, 1.0));
+        CoordsHud() { super("Coords HUD", "HUD"); }
+
+        public void onHud(net.minecraft.client.gui.DrawContext d) {
+            var m = d.getMatrices();
+            m.push();
+            m.translate(x.value, y.value, 0);
+            m.scale(scale.value.floatValue(), scale.value.floatValue(), 1f);
+            int px = mc.player.getBlockX(), py = mc.player.getBlockY(), pz = mc.player.getBlockZ();
+            String dim = Waypoints.curDim();
+            d.drawTextWithShadow(mc.textRenderer, "XYZ: " + px + " " + py + " " + pz, 0, 0, Theme.color());
+            if (dim.equals("overworld"))
+                d.drawTextWithShadow(mc.textRenderer, "Nether: " + (px / 8) + " " + (pz / 8), 0, 10, 0xFFFF7060);
+            else if (dim.equals("nether"))
+                d.drawTextWithShadow(mc.textRenderer, "Overworld: " + (px * 8) + " " + (pz * 8), 0, 10, 0xFF60FF60);
+            m.pop();
+        }
+    }
+
+    public static class AutoLog extends Module {
+        final Setting.Num hp = add(new Setting.Num("Wyloguj przy HP <=", 1, 20, 1, 6));
+        AutoLog() { super("Auto Log", "Anarchia"); }
+
+        public void onTick() {
+            float h = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+            if (h <= hp.value && mc.getNetworkHandler() != null) {
+                mc.getNetworkHandler().getConnection().disconnect(net.minecraft.text.Text.literal("KSAWU23 Auto Log (HP " + (int) h + ")"));
+                enabled = false;
+            }
         }
     }
 }

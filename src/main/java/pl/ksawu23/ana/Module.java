@@ -10,6 +10,7 @@ public abstract class Module {
     public boolean enabled, expanded, wasDown, alwaysOn;
     public int key = -1;
     public float anim, tog;
+    public Runnable action;
     public final List<Setting<?>> settings = new ArrayList<>();
     protected final MinecraftClient mc = MinecraftClient.getInstance();
 

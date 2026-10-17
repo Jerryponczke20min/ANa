@@ -61,8 +61,9 @@ public final class Extra {
         public void onDisable() { if (prev >= 0 && mc.player != null) Util.select(prev); prev = -1; }
     }
 
-    /** Bicie przez sciany: atakuje gracza na linii celowania (z rozszerzonym hitboxem), ignorujac bloki. */
+    /** Bicie przez sciany: atakuje cel na linii celowania (z rozszerzonym hitboxem), ignorujac bloki. */
     public static class WallHit extends Module {
+        final Setting.Blocks targets = add(new Setting.Blocks("Cele", Hacks.TARGETS, Set.of("Gracze", "Wrogie moby", "Przyjazne moby")));
         final Setting.Num reach = add(new Setting.Num("Zasieg", 2, 6, 0.1, 3.0));
         final Setting.Num extra = add(new Setting.Num("Dodatkowy hitbox", 0, 1, 0.05, 0.1));
         final Setting.Bool onlyClick = add(new Setting.Bool("Tylko po kliknieciu", true));
@@ -73,18 +74,18 @@ public final class Extra {
         public void onTick() {
             if (mc.currentScreen != null || mc.interactionManager == null) return;
             if (onlyClick.value && !mc.options.attackKey.isPressed()) return;
-            if (mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) return; // vanilla bije
+            if (mc.crosshairTarget != null && mc.crosshairTarget.getType() == HitResult.Type.ENTITY) return;
             if (cooldown.value && mc.player.getAttackCooldownProgress(0.5f) < 0.9f) return;
             Vec3d eye = mc.player.getEyePos();
             Vec3d end = eye.add(mc.player.getRotationVec(1f).multiply(reach.value));
             Entity best = null; double bd = Double.MAX_VALUE;
-            for (PlayerEntity p : mc.world.getPlayers()) {
-                if (p == mc.player || !p.isAlive()) continue;
-                Box b = p.getBoundingBox().expand(p.getTargetingMargin() + extra.value);
+            for (Entity en : mc.world.getEntities()) {
+                if (!(en instanceof net.minecraft.entity.LivingEntity le) || le == mc.player || !le.isAlive() || !Hacks.valid(targets.value, le)) continue;
+                Box b = le.getBoundingBox().expand(le.getTargetingMargin() + extra.value);
                 Optional<Vec3d> hit = b.raycast(eye, end);
                 if (hit.isPresent()) {
                     double d = eye.squaredDistanceTo(hit.get());
-                    if (d < bd) { bd = d; best = p; }
+                    if (d < bd) { bd = d; best = le; }
                 }
             }
             if (best != null) {
