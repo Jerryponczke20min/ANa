@@ -8,6 +8,8 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.option.KeyBinding;
@@ -60,6 +62,11 @@ public class Client implements ClientModInitializer {
             }
             return ActionResult.PASS;
         });
+
+        UseEntityCallback.EVENT.register((player, world, hand, entity, hit) ->
+                world.isClient && Modules.noInteract.blockEntity(entity) ? ActionResult.FAIL : ActionResult.PASS);
+        UseBlockCallback.EVENT.register((player, world, hand, hit) ->
+                world.isClient && Modules.noInteract.blockBlock(world.getBlockState(hit.getBlockPos())) ? ActionResult.FAIL : ActionResult.PASS);
 
         // wlasne tlo ekwipunku (rysowane pod ekwipunkiem)
         ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {

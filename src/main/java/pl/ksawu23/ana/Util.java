@@ -5,6 +5,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.*;
 import net.minecraft.particle.ParticleEffect;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.*;
@@ -48,6 +49,18 @@ public final class Util {
             if (s > speed) { speed = s; best = i; }
         }
         return best;
+    }
+
+    /** Szuka najszybszego narzedzia w CALYM ekwipunku; jesli jest poza hotbarem, wymienia je do aktualnego slotu. */
+    public static void equipBestTool(BlockState st) {
+        float best = 1f; int bi = -1;
+        for (int i = 0; i < 36; i++) {
+            float s = mc.player.getInventory().getStack(i).getMiningSpeedMultiplier(st);
+            if (s > best) { best = s; bi = i; }
+        }
+        if (bi < 0) return;
+        if (bi < 9) { select(bi); return; }
+        mc.interactionManager.clickSlot(0, bi, mc.player.getInventory().selectedSlot, SlotActionType.SWAP, mc.player);
     }
 
     public static int findHotbar(Predicate<ItemStack> p) {

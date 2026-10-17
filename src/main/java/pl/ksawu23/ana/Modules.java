@@ -20,23 +20,26 @@ import java.util.*;
 
 public final class Modules {
     public static final List<Module> ALL = new ArrayList<>();
-    public static TrapDetect trapDetect;
-    public static TrapEscape trapEscape;
+    public static Trap.Detect trapDetect;
+    public static Trap.Escape trapEscape;
     public static AutoDripstone dripstone;
     public static NoPush noPush;
     public static Hitbox hitbox;
     public static HitEffect hitEffect;
     public static KillEffect killEffect;
     public static Motyw theme;
+    public static Misc.NoInteract noInteract;
 
     static <M extends Module> M reg(M m) { ALL.add(m); return m; }
 
     public static void init() {
-        trapDetect = reg(new TrapDetect());
-        trapEscape = reg(new TrapEscape());
+        trapDetect = reg(new Trap.Detect());
+        trapEscape = reg(new Trap.Escape());
         dripstone = reg(new AutoDripstone());
         reg(new AutoTotem());
         noPush = reg(new NoPush());
+        noInteract = reg(new Misc.NoInteract());
+        reg(new Misc.AutoWater());
         hitbox = reg(new Hitbox());
         hitEffect = reg(new HitEffect());
         killEffect = reg(new KillEffect());
@@ -61,87 +64,6 @@ public final class Modules {
     static String id(Block b) { return Registries.BLOCK.getId(b).getPath(); }
 
     // ---------------- ANARCHIA ----------------
-
-    public static class TrapDetect extends Module {
-        public static boolean trapped;
-        public static final List<BlockPos> hits = new ArrayList<>();
-        final Setting.Blocks blocks = add(new Setting.Blocks("Bloki", Util.TRAP_BLOCKS, Set.of("obsidian", "cobblestone", "crying_obsidian")));
-        final Setting.Num range = add(new Setting.Num("Odleglosc", 1, 8, 1, 3));
-        final Setting.Num min = add(new Setting.Num("Min. blokow", 1, 26, 1, 4));
-        final Setting.Bool outline = add(new Setting.Bool("Podswietl", true));
-        final Setting.Bool warn = add(new Setting.Bool("Napis TRAP", true));
-        int t;
-
-        TrapDetect() { super("Trap Detect", "Anarchia"); }
-
-        public void onTick() {
-            if (t++ % 5 != 0) return;
-            hits.clear();
-            BlockPos c = mc.player.getBlockPos();
-            int r = range.value.intValue();
-            BlockPos.Mutable p = new BlockPos.Mutable();
-            for (int x = -r; x <= r; x++) for (int y = -r; y <= r; y++) for (int z = -r; z <= r; z++) {
-                p.set(c.getX() + x, c.getY() + y, c.getZ() + z);
-                if (blocks.value.contains(id(mc.world.getBlockState(p).getBlock()))) hits.add(p.toImmutable());
-            }
-            trapped = hits.size() >= min.value;
-        }
-
-        public void onDisable() { hits.clear(); trapped = false; }
-
-        public void onRender(WorldRenderContext c) {
-            if (!outline.value || !trapped || c.consumers() == null || c.matrixStack() == null) return;
-            Vec3d cam = c.camera().getPos();
-            var vc = c.consumers().getBuffer(RenderLayer.getLines());
-            int n = 0;
-            for (BlockPos p : hits) {
-                if (n++ > 400) break;
-                Box b = new Box(p).offset(-cam.x, -cam.y, -cam.z);
-                VertexRendering.drawBox(c.matrixStack(), vc, b, 1f, 0.1f, 0.1f, 1f);
-            }
-        }
-
-        public void onHud(DrawContext d) {
-            if (warn.value && trapped)
-                d.drawCenteredTextWithShadow(mc.textRenderer, "!!! TRAP WYKRYTY (" + hits.size() + ") !!!", d.getScaledWindowWidth() / 2, 30, 0xFFFF3030);
-        }
-    }
-
-    public static class TrapEscape extends Module {
-        final Setting.Blocks breakSet = add(new Setting.Blocks("Rozwalaj", Util.TRAP_BLOCKS, Set.of("obsidian", "cobblestone", "crying_obsidian")));
-        final Setting.Bool only = add(new Setting.Bool("Tylko w trapie", true));
-        final Setting.Bool placeAbove = add(new Setting.Bool("Stawiaj nad glowa", true));
-        final Setting.Mode placeBlock = add(new Setting.Mode("Blok nad glowa", Util.TRAP_BLOCKS, "cobblestone"));
-        final Setting.Num delay = add(new Setting.Num("Opoznienie (tick)", 0, 10, 1, 0));
-        int cd;
-
-        TrapEscape() { super("Trap Escape", "Anarchia"); }
-
-        public void onTick() {
-            if (mc.interactionManager == null) return;
-            if (only.value && trapDetect.enabled && !TrapDetect.trapped) return;
-            if (cd-- > 0) return;
-            BlockPos f = mc.player.getBlockPos();
-            List<BlockPos> cand = List.of(f.up(2), f.up(), f, f.north(), f.south(), f.east(), f.west(),
-                    f.north().up(), f.south().up(), f.east().up(), f.west().up());
-            for (BlockPos p : cand) {
-                BlockState st = mc.world.getBlockState(p);
-                if (st.isAir() || !breakSet.value.contains(id(st.getBlock())) || !Util.inReach(p)) continue;
-                Util.select(Util.bestTool(st));
-                Util.breakBlock(p);
-                cd = delay.value.intValue();
-                return;
-            }
-            if (placeAbove.value) {
-                BlockPos above = f.up(2);
-                if (mc.world.getBlockState(above).isAir()) {
-                    int slot = Util.findHotbar(s -> s.getItem() instanceof net.minecraft.item.BlockItem bi
-                            && id(bi.getBlock()).equals(placeBlock.value));
-                    if (slot >= 0) { Util.select(slot); Util.place(above, null); cd = delay.value.intValue(); }
-                }
-            }
-        }
-    }
 
     public static class AutoDripstone extends Module {
         final Setting.Num range = add(new Setting.Num("Zasieg celu", 2, 8, 1, 5));
@@ -280,6 +202,11 @@ public final class Modules {
         public final Setting.Bool bgOn = add(new Setting.Bool("Wlasne tlo GUI", true));
         public final Setting.Bool invOn = add(new Setting.Bool("Wlasne tlo EQ", true));
         public final Setting.Bool reload = add(new Setting.Bool("Przeladuj obrazki", false));
+        public final Setting.Num size = add(new Setting.Num("Rozmiar GUI", 0.6, 1.6, 0.05, 1.0));
+        public final Setting.Bool anims = add(new Setting.Bool("Animacje GUI", true));
+        public final Setting.Bool parts = add(new Setting.Bool("Czasteczki w tle", true));
+        public final Setting.Mode preset = add(new Setting.Mode("Styl koloru", List.of("Wlasny", "Wisnia", "Tecza", "Ocean", "Lava"), "Wlasny"));
+        public final Setting.Mode partStyle = add(new Setting.Mode("Styl czasteczek", List.of("Platki wisni", "Kropki", "Snieg", "Tecza"), "Platki wisni"));
         Motyw() { super("Motyw", "Ustawienia"); alwaysOn = true; enabled = true; }
         public void onTick() { if (reload.value) { reload.value = false; Theme.load(); } }
     }

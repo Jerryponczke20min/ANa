@@ -9,6 +9,7 @@ public abstract class Module {
     public final String name, category;
     public boolean enabled, expanded, wasDown, alwaysOn;
     public int key = -1;
+    public float anim, tog;
     public final List<Setting<?>> settings = new ArrayList<>();
     protected final MinecraftClient mc = MinecraftClient.getInstance();
 

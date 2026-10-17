@@ -30,6 +30,7 @@ public final class Hacks {
     // ---------------- COMBAT ----------------
 
     public static class KillAura extends Module {
+        final Setting.Blocks targets = add(new Setting.Blocks("Cele", List.of("Gracze", "Wrogie moby", "Przyjazne moby"), Set.of("Gracze")));
         final Setting.Num range = add(new Setting.Num("Zasieg", 2, 6, 0.1, 4.2));
         final Setting.Mode prio = add(new Setting.Mode("Priorytet", List.of("Odleglosc", "Zycie"), "Odleglosc"));
         final Setting.Bool walls = add(new Setting.Bool("Przez sciany", true));
@@ -39,15 +40,22 @@ public final class Hacks {
 
         KillAura() { super("Kill Aura", "Combat"); }
 
+        boolean valid(net.minecraft.entity.LivingEntity e) {
+            if (e instanceof PlayerEntity p) return targets.value.contains("Gracze") && !p.isSpectator();
+            if (e instanceof net.minecraft.entity.mob.Monster) return targets.value.contains("Wrogie moby");
+            return targets.value.contains("Przyjazne moby");
+        }
+
         public void onTick() {
             if (mc.currentScreen != null || mc.interactionManager == null) return;
-            PlayerEntity t = null; double bs = Double.MAX_VALUE;
-            for (PlayerEntity p : mc.world.getPlayers()) {
-                if (p == mc.player || !p.isAlive() || p.isSpectator()) continue;
-                if (mc.player.distanceTo(p) > range.value) continue;
-                if (!walls.value && !mc.player.canSee(p)) continue;
-                double s = prio.value.equals("Zycie") ? p.getHealth() : mc.player.distanceTo(p);
-                if (s < bs) { bs = s; t = p; }
+            net.minecraft.entity.LivingEntity t = null; double bs = Double.MAX_VALUE;
+            for (net.minecraft.entity.Entity en : mc.world.getEntities()) {
+                if (!(en instanceof net.minecraft.entity.LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+                if (le instanceof net.minecraft.entity.decoration.ArmorStandEntity || !valid(le)) continue;
+                if (mc.player.distanceTo(le) > range.value) continue;
+                if (!walls.value && !mc.player.canSee(le)) continue;
+                double s = prio.value.equals("Zycie") ? le.getHealth() : mc.player.distanceTo(le);
+                if (s < bs) { bs = s; t = le; }
             }
             if (t == null) return;
             if (rotate.value) lookAt(mc, t.getPos().add(0, t.getHeight() * 0.6, 0));
