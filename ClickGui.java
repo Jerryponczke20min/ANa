@@ -340,7 +340,7 @@ public class ClickGui extends Screen {
             return true;
         }
         if (pending != null && keyCode == GLFW.GLFW_KEY_ESCAPE) { pending = null; return true; }
-        if (Client.openKey.matchesKey(keyCode, scanCode)) { close(); return true; }
+        if (Client.openKey.matchesKey(keyCode, scanCode) || Client.openKey2.matchesKey(keyCode, scanCode)) { close(); return true; }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
