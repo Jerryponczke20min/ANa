@@ -1,7 +1,0 @@
-{
-  "required": true,
-  "package": "pl.ksawu23.ana.mixin",
-  "compatibilityLevel": "JAVA_21",
-  "client": ["EntityMixin", "ClientPlayerEntityMixin"],
-  "injectors": { "defaultRequire": 0 }
-}
