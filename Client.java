@@ -55,7 +55,7 @@ public class Client implements ClientModInitializer {
             if (mc.player == null || mc.world == null) return;
             if (!greeted) {
                 greeted = true;
-                mc.player.sendMessage(Text.literal("[KSAWU23] Client Ana zaladowany. Prawy Ctrl lub Prawy Shift = GUI."), false);
+                mc.player.sendMessage(Text.literal("[KSAWU23] Client Ana v2.0 zaladowany. Prawy Ctrl lub Prawy Shift = GUI."), false);
             }
             for (Module m : Modules.ALL) {
                 try {
