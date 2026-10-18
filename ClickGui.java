@@ -5,6 +5,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -15,25 +16,30 @@ import java.util.function.Consumer;
 
 public class ClickGui extends Screen {
     static final String[] CATS = {"Anarchia", "PVP", "Visuals", "HUD", "Swiat", "Ustawienia"};
+    static final int[] SWATCH = {0x3B82F6, 0x8B5CF6, 0xEC4899, 0xEF4444, 0xF97316, 0xEAB308, 0x22C55E};
 
-    record Hit(int x, int y, int w, int h, Runnable l, Runnable r, Runnable m, Consumer<Double> drag) {
-        boolean in(double a, double b) { return a >= x && a < x + w && b >= y && b < y + h; }
+    record Hit(int x, int y, int w, int h, int cy1, int cy2, Runnable l, Runnable r, Runnable m, Consumer<Double> drag) {
+        boolean in(double a, double b) { return a >= x && a < x + w && b >= Math.max(y, cy1) && b < Math.min(y + h, cy2); }
     }
 
     final List<Hit> hits = new ArrayList<>();
     final List<Hit> modalHits = new ArrayList<>();
-    Module binding;
+    Module binding, sel;
     Hit dragging;
+    int tab;
     float openT, sc = 1f;
     int lw, lh;
-    final float[] scroll = new float[CATS.length], scrollT = new float[CATS.length], contentH = new float[CATS.length];
+    final float[] scrollL = new float[CATS.length + 1], scrollLT = new float[CATS.length + 1];
+    float contentL, scrollR, scrollRT, contentR;
+    // geometria okna (potrzebna tez do przewijania kolkiem)
+    int wx, wy, ww, wh, sbw = 112, rpw, mx0, mw, top, bot;
     Path pending;
     String status = "";
     int statusT;
     static final float[][] P = new float[70][5];
     static boolean pInit;
 
-    public ClickGui() { super(Text.literal("KSAWU23")); }
+    public ClickGui() { super(Text.literal("KSAWU23")); sel = Modules.theme; }
 
     @Override public boolean shouldPause() { return false; }
 
@@ -57,7 +63,21 @@ public class ClickGui extends Screen {
         return h;
     }
 
-    // ---------- przeciaganie plikow na okno gry ----------
+    Module firstOf(String cat) {
+        for (Module m : Modules.ALL) if (m.category.equals(cat)) return m;
+        return null;
+    }
+
+    void text(DrawContext c, String s, int x, int y, float scale, int col) {
+        var m = c.getMatrices();
+        m.push();
+        m.translate(x, y, 0);
+        m.scale(scale, scale, 1f);
+        c.drawTextWithShadow(textRenderer, s, 0, 0, col);
+        m.pop();
+    }
+
+    // ---------- przeciaganie plikow na okno gry (PNG, JPG, GIF) ----------
     public void onFilesDropped(List<Path> paths) { filesDragged(paths); }
 
     public void filesDragged(List<Path> paths) {
@@ -68,20 +88,26 @@ public class ClickGui extends Screen {
                 return;
             }
         }
-        status = "To nie jest obrazek (PNG / JPG).";
+        status = "To nie jest obrazek (PNG / JPG / GIF).";
         statusT = 200;
     }
 
     void applyDrop(boolean gui, boolean inv) {
         try {
-            BufferedImage img = ImageIO.read(pending.toFile());
-            if (img == null) throw new IllegalStateException("nieznany format");
             File dir = new File(MinecraftClient.getInstance().runDirectory, "ksawu23");
             dir.mkdirs();
-            if (gui) ImageIO.write(img, "png", new File(dir, "gui.png"));
+            boolean isGif = pending.getFileName().toString().toLowerCase().endsWith(".gif");
+            BufferedImage img = ImageIO.read(pending.toFile());
+            if (img == null) throw new IllegalStateException("nieznany format");
+            if (gui) {
+                ImageIO.write(img, "png", new File(dir, "gui.png"));
+                File gf = new File(dir, "gui.gif");
+                if (isGif) java.nio.file.Files.copy(pending, gf.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                else gf.delete();
+            }
             if (inv) ImageIO.write(img, "png", new File(dir, "inventory.png"));
             Theme.load();
-            status = "Ustawiono obrazek!";
+            status = isGif && gui ? "Ustawiono animowane tlo (GIF)!" : "Ustawiono obrazek!";
         } catch (Exception ex) {
             status = "Blad: " + ex.getMessage();
         }
@@ -102,13 +128,16 @@ public class ClickGui extends Screen {
         openT = anim ? Math.min(1f, openT + 0.08f) : 1f;
         float e = 1f - (float) Math.pow(1 - openT, 3);
         int acc = Theme.color();
+        int accRgb = acc & 0xFFFFFF;
+        int pa = (int) (255 * th.panelAlpha.value);
 
-        // tlo
-        if (th.bgOn.value && Theme.bg != null)
-            c.drawTexture(RenderLayer::getGuiTextured, Theme.bg, 0, 0, 0f, 0f, width, height, width, height);
-        else c.fill(0, 0, width, height, ((int) (0x99 * e) << 24));
+        // ---- tlo: GIF / obrazek / ciemna warstwa ----
+        Identifier gif = th.bgOn.value ? AnimBg.current() : null;
+        if (gif != null) c.drawTexture(RenderLayer::getGuiTextured, gif, 0, 0, 0f, 0f, width, height, width, height);
+        else if (th.bgOn.value && Theme.bg != null) c.drawTexture(RenderLayer::getGuiTextured, Theme.bg, 0, 0, 0f, 0f, width, height, width, height);
+        if (gif != null || (th.bgOn.value && Theme.bg != null)) c.fill(0, 0, width, height, 0x55000000);
+        else c.fill(0, 0, width, height, ((int) (0xAA * e) << 24));
 
-        // czasteczki w tle
         if (!pInit) {
             for (float[] p : P) {
                 p[0] = (float) (Math.random() * width); p[1] = (float) (Math.random() * height);
@@ -135,95 +164,162 @@ public class ClickGui extends Screen {
             }
         }
 
+        // ---- okno ----
         var mat = c.getMatrices();
         mat.push();
         mat.scale(sc, sc, 1f);
-        mat.translate(0, (1f - e) * -25f, 0);
+        mat.translate(0, (1f - e) * -20f, 0);
 
-        mat.push();
-        mat.translate(lw / 2f, 4, 0);
-        mat.scale(1.5f, 1.5f, 1f);
-        c.drawCenteredTextWithShadow(textRenderer, "KSAWU23 Client Ana", 0, 0, acc);
-        mat.pop();
+        ww = Math.min(lw - 16, 620);
+        wh = Math.min(lh - 16, 340);
+        wx = (lw - ww) / 2;
+        wy = (lh - wh) / 2;
+        rpw = Math.min(180, ww / 3);
+        mx0 = wx + sbw;
+        mw = ww - sbw - rpw;
+        top = wy + 32;
+        bot = wy + wh - 18;
+        int rx = wx + ww - rpw;
 
-        int pw = Math.min(112, (lw - 20) / CATS.length - 8);
-        int x0 = (lw - (pw + 8) * CATS.length + 8) / 2;
-        int accSoft = (acc & 0x00FFFFFF) | 0xAA000000;
-        int top = 39, bot = lh - 34;
+        c.fill(wx, wy, wx + ww, wy + wh, (pa << 24) | 0x0E1014);
+        c.fill(wx, wy, wx + sbw, wy + wh, (Math.min(255, pa + 20) << 24) | 0x07080A);
+        c.fill(rx, wy, wx + ww, wy + wh, (Math.min(255, pa + 10) << 24) | 0x0A0B0E);
+        c.drawBorder(wx, wy, ww, wh, (0xCC << 24) | accRgb);
+        c.fillGradient(wx, wy, wx + ww, wy + 2, acc, (accRgb) | 0x00000000);
 
-        for (int i = 0; i < CATS.length; i++) {
-            int x = x0 + i * (pw + 8);
-            c.fillGradient(x, 22, x + pw, 37, acc, mul(acc, 0.55f));
-            c.drawBorder(x, 22, pw, 15, acc);
-            c.drawCenteredTextWithShadow(textRenderer, CATS[i], x + pw / 2, 26, 0xFFFFFFFF);
+        // pasek boczny: tytul i nawigacja
+        text(c, "KSAWU23", wx + 10, wy + 10, 1.6f, acc);
+        text(c, "CLIENT ANA", wx + 11, wy + 26, 0.9f, 0xFFFFFFFF);
+        text(c, "more than just a client", wx + 11, wy + 38, 0.65f, 0xFF7A7F88);
+        for (int i = 0; i <= CATS.length; i++) {
+            int ny = wy + 56 + i * 22;
+            boolean selT = tab == i, hv = mxl >= wx && mxl < wx + sbw && myl >= ny && myl < ny + 20;
+            if (selT) c.fill(wx + 4, ny, wx + sbw - 4, ny + 20, (0x55 << 24) | accRgb);
+            else if (hv) c.fill(wx + 4, ny, wx + sbw - 4, ny + 20, 0x22FFFFFF);
+            if (selT) c.fill(wx + 4, ny, wx + 6, ny + 20, acc);
+            c.drawTextWithShadow(textRenderer, i == 0 ? "Home" : CATS[i - 1], wx + 14, ny + 6, selT ? 0xFFFFFFFF : 0xFF9AA0AA);
+            final int ti = i;
+            hits.add(new Hit(wx + 4, ny, sbw - 8, 20, 0, lh, () -> {
+                tab = ti;
+                sel = ti == 0 ? Modules.theme : firstOf(CATS[ti - 1]);
+                scrollR = scrollRT = 0;
+            }, null, null, null));
+        }
+        text(c, "Fabric 1.21.4", wx + 10, wy + wh - 12, 0.7f, 0xFF5E636C);
 
-            float max = Math.max(0, contentH[i] - (bot - top));
-            scrollT[i] = Math.max(0, Math.min(max, scrollT[i]));
-            scroll[i] += (scrollT[i] - scroll[i]) * 0.35f;
+        // naglowek glownego pola
+        String title = tab == 0 ? "Home" : CATS[tab - 1];
+        text(c, title, mx0 + 12, wy + 10, 1.3f, 0xFFFFFFFF);
+        c.fill(mx0 + 10, wy + 26, rx - 10, wy + 27, (0x66 << 24) | accRgb);
 
-            c.enableScissor(x, top, x + pw, bot);
-            int y = top - (int) scroll[i];
-            for (Module m : Modules.ALL) {
-                if (!m.category.equals(CATS[i])) continue;
-                boolean on = m.enabled && !m.alwaysOn;
-                float tt = on ? 1f : 0f;
-                m.tog = anim ? m.tog + (tt - m.tog) * 0.25f : tt;
-                boolean hover = mxl >= x && mxl < x + pw && myl >= y && myl < y + 13 && myl >= top && myl < bot;
-                int base = lerp(0xCC141418, accSoft, m.tog);
-                if (hover) base = lerp(base, 0xFFFFFFFF, 0.12f);
-                c.fill(x, y, x + pw, y + 13, base);
-                if (m.tog > 0.05f) c.fill(x, y, x + 2, y + 13, ((int) (255 * m.tog) << 24) | (acc & 0xFFFFFF));
-                String label = binding == m ? "[nacisnij klawisz...]"
-                        : m.name + (m.key >= 0 ? " [" + Modules.keyName(m.key) + "]" : "");
-                int tc = lerp(0xFFAAAAAA, 0xFFFFFFFF, Math.max(m.tog, hover ? 1f : 0f));
-                c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(label, pw - 14), x + 4, y + 3, tc);
-                if (!m.settings.isEmpty())
-                    c.drawTextWithShadow(textRenderer, m.expanded ? "-" : "+", x + pw - 9, y + 3, 0xFFAAAAAA);
+        // ---- glowne pole ----
+        if (tab == 0) {
+            int cx = mx0 + mw / 2;
+            mat.push();
+            mat.translate(cx, wy + 48, 0);
+            mat.scale(2.6f, 2.6f, 1f);
+            c.drawCenteredTextWithShadow(textRenderer, "KSAWU23", 0, 0, acc);
+            mat.pop();
+            mat.push();
+            mat.translate(cx, wy + 78, 0);
+            mat.scale(1.4f, 1.4f, 1f);
+            c.drawCenteredTextWithShadow(textRenderer, "CLIENT ANA", 0, 0, 0xFFFFFFFF);
+            mat.pop();
+            c.drawCenteredTextWithShadow(textRenderer, "Wybierz zakladke po lewej i dostosuj swojego klienta.", cx, wy + 102, 0xFF9AA0AA);
 
-                Runnable expand = () -> {
-                    boolean ex = !m.expanded;
-                    for (Module o : Modules.ALL) if (o.category.equals(m.category)) o.expanded = false;
-                    m.expanded = ex;
-                };
-                Runnable left = m.action != null ? m.action : (m.alwaysOn ? expand : m::toggle);
-                hits.add(new Hit(x, y, pw, 13, left, expand, () -> binding = m, null));
-                y += 14;
-
-                float target = m.expanded ? 1f : 0f;
-                m.anim = anim ? m.anim + (target - m.anim) * 0.3f : target;
-                if (Math.abs(target - m.anim) < 0.01f) m.anim = target;
-                int sh = settingsHeight(m);
-                int vh = (int) (sh * m.anim);
-                if (vh > 0) {
-                    boolean live = m.anim > 0.97f;
-                    c.enableScissor(x, Math.max(y, top), x + pw, Math.min(y + vh, bot));
-                    int yy = y;
-                    for (Setting<?> s : m.settings) yy = drawSetting(c, s, x, yy, pw, acc, live);
-                    c.disableScissor();
-                    y += vh;
-                }
+            c.drawTextWithShadow(textRenderer, "Kolor GUI:", mx0 + 16, wy + 126, 0xFFFFFFFF);
+            for (int i = 0; i < SWATCH.length; i++) {
+                int sx = mx0 + 16 + i * 26, sy = wy + 140;
+                c.fill(sx, sy, sx + 20, sy + 20, 0xFF000000 | SWATCH[i]);
+                if ((acc & 0xFFFFFF) == SWATCH[i]) c.drawBorder(sx - 1, sy - 1, 22, 22, 0xFFFFFFFF);
+                final int col = SWATCH[i];
+                hits.add(new Hit(sx, sy, 20, 20, 0, lh, () -> {
+                    th.preset.value = "Wlasny";
+                    th.r.value = (double) ((col >> 16) & 255); th.g.value = (double) ((col >> 8) & 255); th.b.value = (double) (col & 255);
+                }, null, null, null));
             }
-            contentH[i] = y - (top - (int) scroll[i]);
-            c.disableScissor();
+            int tx = mx0 + 16 + SWATCH.length * 26, ty = wy + 140;
+            for (int k = 0; k < 20; k++) c.fill(tx + k, ty, tx + k + 1, ty + 20, 0xFF000000 | (java.awt.Color.HSBtoRGB(k / 20f, 0.7f, 1f) & 0xFFFFFF));
+            hits.add(new Hit(tx, ty, 20, 20, 0, lh, () -> th.preset.value = "Tecza", null, null, null));
 
-            float viewH = bot - top;
-            if (contentH[i] > viewH) {
-                int bh = Math.max(12, (int) (viewH * viewH / contentH[i]));
-                int by = top + (int) ((viewH - bh) * (scroll[i] / (contentH[i] - viewH)));
-                c.fill(x + pw + 2, by, x + pw + 4, by + bh, (acc & 0xFFFFFF) | 0xCC000000);
+            String[] tips = {"LPM na module: wlacz / wylacz", "PPM: pokaz ustawienia po prawej", "Srodkowy przycisk: przypisz klawisz",
+                    "Kolko myszy: przewijanie list", "Przeciagnij GIF/PNG/JPG na okno: tlo GUI (GIF = animowane)"};
+            for (int i = 0; i < tips.length; i++) c.drawTextWithShadow(textRenderer, tips[i], mx0 + 16, wy + 176 + i * 12, 0xFF7A7F88);
+        } else {
+            List<Module> mods = new ArrayList<>();
+            for (Module m : Modules.ALL) if (m.category.equals(CATS[tab - 1])) mods.add(m);
+            float maxL = Math.max(0, contentL - (bot - top));
+            scrollLT[tab] = Math.max(0, Math.min(maxL, scrollLT[tab]));
+            scrollL[tab] += (scrollLT[tab] - scrollL[tab]) * 0.35f;
+
+            c.enableScissor(mx0, top, mx0 + mw, bot);
+            int y = top + 4 - (int) scrollL[tab];
+            int x = mx0 + 10, w = mw - 20;
+            for (Module m : mods) {
+                boolean on = m.enabled && !m.alwaysOn;
+                m.tog = anim ? m.tog + ((on ? 1f : 0f) - m.tog) * 0.25f : (on ? 1f : 0f);
+                boolean hv = mxl >= x && mxl < x + w && myl >= y && myl < y + 22 && myl >= top && myl < bot;
+                int bg = lerp(0xCC15171C, (0x44 << 24) | accRgb, m.tog);
+                if (hv) bg = lerp(bg, 0xFFFFFFFF, 0.08f);
+                c.fill(x, y, x + w, y + 22, bg);
+                if (sel == m) c.drawBorder(x, y, w, 22, (0xAA << 24) | accRgb);
+                if (m.tog > 0.05f) c.fill(x, y, x + 2, y + 22, ((int) (255 * m.tog) << 24) | accRgb);
+                String label = binding == m ? "[nacisnij klawisz...]" : m.name;
+                c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(label, w - 70), x + 8, y + 7, lerp(0xFFAAAAAA, 0xFFFFFFFF, Math.max(m.tog, hv ? 1f : 0f)));
+                if (m.key >= 0) c.drawTextWithShadow(textRenderer, "[" + Modules.keyName(m.key) + "]", x + w - 58 - textRenderer.getWidth("[" + Modules.keyName(m.key) + "]") / 2, y + 7, 0xFF6C7280);
+                if (m.alwaysOn || m.action != null) {
+                    c.drawTextWithShadow(textRenderer, ">", x + w - 14, y + 7, 0xFF9AA0AA);
+                } else {
+                    int sx = x + w - 32, sy = y + 6;
+                    c.fill(sx, sy, sx + 24, sy + 10, lerp(0xFF30343C, 0xFF000000 | accRgb, m.tog));
+                    int kx = sx + 2 + (int) (14 * m.tog);
+                    c.fill(kx, sy + 2, kx + 8, sy + 8, 0xFFFFFFFF);
+                }
+                Runnable right = () -> { sel = m; scrollR = scrollRT = 0; };
+                Runnable left = m.action != null ? m.action : (m.alwaysOn ? right : m::toggle);
+                hits.add(new Hit(x, y, w, 22, top, bot, left, right, () -> binding = m, null));
+                y += 25;
+            }
+            contentL = y - (top + 4 - (int) scrollL[tab]) + 4;
+            c.disableScissor();
+            if (contentL > bot - top) {
+                int bh = Math.max(14, (int) ((bot - top) * (bot - top) / contentL));
+                int by = top + (int) (((bot - top) - bh) * (scrollL[tab] / (contentL - (bot - top))));
+                c.fill(mx0 + mw - 4, by, mx0 + mw - 2, by + bh, (0xCC << 24) | accRgb);
             }
         }
 
+        // ---- prawy panel: ustawienia wybranego modulu ----
+        c.drawTextWithShadow(textRenderer, sel == null ? "Ustawienia" : textRenderer.trimToWidth(sel.name, rpw - 20), rx + 10, wy + 10, 0xFFFFFFFF);
+        c.fill(rx + 8, wy + 26, wx + ww - 8, wy + 27, (0x66 << 24) | accRgb);
+        if (sel == null || sel.settings.isEmpty()) {
+            c.drawTextWithShadow(textRenderer, "Brak ustawien.", rx + 10, top + 6, 0xFF7A7F88);
+            if (tab != 0) c.drawTextWithShadow(textRenderer, "PPM na module", rx + 10, top + 20, 0xFF5E636C);
+        } else {
+            contentR = settingsHeight(sel);
+            float maxR = Math.max(0, contentR - (bot - top));
+            scrollRT = Math.max(0, Math.min(maxR, scrollRT));
+            scrollR += (scrollRT - scrollR) * 0.35f;
+            c.enableScissor(rx, top, wx + ww, bot);
+            int yy = top + 2 - (int) scrollR;
+            for (Setting<?> s : sel.settings) yy = drawSetting(c, s, rx + 4, yy, rpw - 14, acc, top, bot);
+            c.disableScissor();
+            if (contentR > bot - top) {
+                int bh = Math.max(14, (int) ((bot - top) * (bot - top) / contentR));
+                int by = top + (int) (((bot - top) - bh) * (scrollR / (contentR - (bot - top))));
+                c.fill(wx + ww - 5, by, wx + ww - 3, by + bh, (0xCC << 24) | accRgb);
+            }
+        }
+
+        // stopka
         String path = new File(MinecraftClient.getInstance().runDirectory, "ksawu23").getAbsolutePath();
-        c.drawCenteredTextWithShadow(textRenderer, "Tlo GUI/EQ: przeciagnij plik PNG/JPG na okno gry (folder: " + path + ")", lw / 2, lh - 30, 0xFFAAAAAA);
-        c.drawCenteredTextWithShadow(textRenderer,
-                "LPM: wl/wyl | PPM: ustawienia | SPM: keybind | Kolko: przewijanie | Prawy Ctrl: zamknij", lw / 2, lh - 18, 0xFF888888);
+        text(c, "Tlo GUI/EQ: przeciagnij PNG/JPG/GIF na okno gry   |   " + path, mx0 + 12, wy + wh - 11, 0.7f, 0xFF5E636C);
         if (statusT > 0) {
             statusT--;
-            c.drawCenteredTextWithShadow(textRenderer, status, lw / 2, lh - 42, 0xFF55FF55);
+            c.drawCenteredTextWithShadow(textRenderer, status, wx + ww / 2, wy + wh + 6, 0xFF55FF55);
         }
 
-        // okienko po upuszczeniu pliku
+        // ---- okienko po upuszczeniu pliku ----
         if (pending != null) {
             c.fill(0, 0, lw, lh, 0xAA000000);
             int bw = 260, bh = 78, bx = (lw - bw) / 2, by = (lh - bh) / 2;
@@ -236,28 +332,28 @@ public class ClickGui extends Screen {
             for (int i = 0; i < 4; i++) {
                 int x = bx + 9 + i * 62;
                 boolean hv = mxl >= x && mxl < x + 56 && myl >= by + 44 && myl < by + 64;
-                c.fill(x, by + 44, x + 56, by + 64, hv ? ((acc & 0xFFFFFF) | 0xDD000000) : 0xFF26262C);
+                c.fill(x, by + 44, x + 56, by + 64, hv ? ((accRgb) | 0xDD000000) : 0xFF26262C);
                 c.drawBorder(x, by + 44, 56, 20, acc);
                 c.drawCenteredTextWithShadow(textRenderer, names[i], x + 28, by + 50, 0xFFFFFFFF);
-                modalHits.add(new Hit(x, by + 44, 56, 20, acts[i], null, null, null));
+                modalHits.add(new Hit(x, by + 44, 56, 20, 0, lh, acts[i], null, null, null));
             }
         }
         mat.pop();
     }
 
-    int drawSetting(DrawContext c, Setting<?> s, int x, int y, int pw, int acc, boolean live) {
+    int drawSetting(DrawContext c, Setting<?> s, int x, int y, int pw, int acc, int cy1, int cy2) {
         int soft = (acc & 0x00FFFFFF) | 0x99000000;
         if (s instanceof Setting.Bool b) {
-            c.fill(x + 2, y, x + pw, y + 12, 0xCC202020);
+            c.fill(x + 2, y, x + pw, y + 12, 0xCC202228);
             c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(b.name, pw - 30), x + 5, y + 2, 0xFFFFFFFF);
             c.drawTextWithShadow(textRenderer, b.value ? "ON" : "OFF", x + pw - 22, y + 2, b.value ? 0xFF55FF55 : 0xFFFF5555);
-            if (live) hits.add(new Hit(x + 2, y, pw - 2, 12, () -> b.value = !b.value, null, null, null));
+            hits.add(new Hit(x + 2, y, pw - 2, 12, cy1, cy2, () -> b.value = !b.value, null, null, null));
             return y + 13;
         }
         if (s instanceof Setting.Num n) {
             double f = (n.value - n.min) / (n.max - n.min);
             int fw = (int) ((pw - 2) * f);
-            c.fill(x + 2, y, x + pw, y + 12, 0xCC202020);
+            c.fill(x + 2, y, x + pw, y + 12, 0xCC202228);
             c.fillGradient(x + 2, y, x + 2 + fw, y + 12, soft, (mul(acc, 0.4f) & 0x00FFFFFF) | 0x99000000);
             c.fill(x + 1 + fw, y, x + 3 + fw, y + 12, 0xFFFFFFFF);
             c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(String.format("%s: %.2f", n.name, n.value), pw - 6), x + 5, y + 2, 0xFFFFFFFF);
@@ -267,13 +363,13 @@ public class ClickGui extends Screen {
                 double v = n.min + fr * (n.max - n.min);
                 n.value = Math.max(n.min, Math.min(n.max, Math.round(v / n.step) * n.step));
             };
-            if (live) hits.add(new Hit(sx, y, sw, 12, null, null, null, d));
+            hits.add(new Hit(sx, y, sw, 12, cy1, cy2, null, null, null, d));
             return y + 13;
         }
         if (s instanceof Setting.Mode md) {
-            c.fill(x + 2, y, x + pw, y + 12, 0xCC202020);
+            c.fill(x + 2, y, x + pw, y + 12, 0xCC202228);
             c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(md.name + ": " + md.value, pw - 6), x + 5, y + 2, 0xFFFFFFFF);
-            if (live) hits.add(new Hit(x + 2, y, pw - 2, 12, md::cycle, null, null, null));
+            hits.add(new Hit(x + 2, y, pw - 2, 12, cy1, cy2, md::cycle, null, null, null));
             return y + 13;
         }
         if (s instanceof Setting.Blocks bl) {
@@ -281,9 +377,9 @@ public class ClickGui extends Screen {
             y += 12;
             for (String o : bl.options) {
                 boolean on = bl.value.contains(o);
-                c.fill(x + 6, y, x + pw, y + 11, on ? soft : 0xCC202020);
+                c.fill(x + 6, y, x + pw, y + 11, on ? soft : 0xCC202228);
                 c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(o, pw - 12), x + 9, y + 2, on ? 0xFFFFFFFF : 0xFF999999);
-                if (live) hits.add(new Hit(x + 6, y, pw - 6, 11, () -> bl.toggle(o), null, null, null));
+                hits.add(new Hit(x + 6, y, pw - 6, 11, cy1, cy2, () -> bl.toggle(o), null, null, null));
                 y += 12;
             }
             return y;
@@ -299,7 +395,7 @@ public class ClickGui extends Screen {
             return true;
         }
         for (Hit h : hits) {
-            if (!h.in(lx, ly) || ly < 39 || ly > lh - 34) continue;
+            if (!h.in(lx, ly)) continue;
             if (h.drag != null) { dragging = h; h.drag.accept(lx); return true; }
             Runnable r = button == 0 ? h.l : button == 1 ? h.r : button == 2 ? h.m : null;
             if (r != null) { r.run(); return true; }
@@ -309,16 +405,15 @@ public class ClickGui extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double hAmount, double vAmount) {
-        double lx = mx / sc;
-        int pw = Math.min(112, (lw - 20) / CATS.length - 8);
-        int x0 = (lw - (pw + 8) * CATS.length + 8) / 2;
-        for (int i = 0; i < CATS.length; i++) {
-            int x = x0 + i * (pw + 8);
-            if (lx >= x - 4 && lx < x + pw + 4) {
-                float max = Math.max(0, contentH[i] - ((lh - 34) - 39));
-                scrollT[i] = Math.max(0, Math.min(max, scrollT[i] - (float) vAmount * 22f));
-                return true;
-            }
+        double lx = mx / sc, ly = my / sc;
+        int rx = wx + ww - rpw;
+        if (lx >= rx && lx < wx + ww && ly >= top && ly < bot) {
+            scrollRT = Math.max(0, Math.min(Math.max(0, contentR - (bot - top)), scrollRT - (float) vAmount * 22f));
+            return true;
+        }
+        if (tab > 0 && lx >= mx0 && lx < mx0 + mw && ly >= top && ly < bot) {
+            scrollLT[tab] = Math.max(0, Math.min(Math.max(0, contentL - (bot - top)), scrollLT[tab] - (float) vAmount * 22f));
+            return true;
         }
         return super.mouseScrolled(mx, my, hAmount, vAmount);
     }

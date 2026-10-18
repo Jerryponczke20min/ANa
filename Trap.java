@@ -16,21 +16,36 @@ public final class Trap {
     public static final LinkedHashMap<String, Predicate<String>> BLOCKS = new LinkedHashMap<>();
     public static final LinkedHashMap<String, Predicate<String>> ENTITIES = new LinkedHashMap<>();
 
+    static boolean isBanner(String p, String color) { return p.endsWith("_banner") && p.startsWith(color + "_"); }
+
     static {
-        BLOCKS.put("Obsidian", p -> p.equals("obsidian") || p.equals("crying_obsidian"));
-        BLOCKS.put("Kamien", p -> Set.of("cobblestone", "stone", "deepslate", "cobbled_deepslate", "end_stone", "stone_bricks", "netherrack", "blackstone").contains(p));
+        BLOCKS.put("Obsidian", p -> p.equals("obsidian"));
+        BLOCKS.put("Placzacy obsidian", p -> p.equals("crying_obsidian"));
+        BLOCKS.put("Kamien", p -> Set.of("stone", "deepslate", "end_stone", "stone_bricks", "blackstone", "netherrack", "andesite", "granite", "diorite", "smooth_stone").contains(p));
+        BLOCKS.put("Bruk (cobblestone)", p -> p.equals("cobblestone") || p.equals("mossy_cobblestone") || p.equals("cobbled_deepslate"));
         BLOCKS.put("Netherite/Bedrock", p -> p.equals("netherite_block") || p.equals("bedrock") || p.equals("ancient_debris"));
         BLOCKS.put("Pajeczyna", p -> p.equals("cobweb"));
         BLOCKS.put("Plotki", p -> p.endsWith("_fence"));
         BLOCKS.put("Furtki", p -> p.endsWith("_fence_gate"));
         BLOCKS.put("Murki", p -> p.endsWith("_wall"));
-        BLOCKS.put("Banery", p -> p.endsWith("_banner"));
+        BLOCKS.put("Banner bialy", p -> isBanner(p, "white") || p.equals("white_wall_banner"));
+        BLOCKS.put("Banner czarny", p -> isBanner(p, "black") || p.equals("black_wall_banner"));
+        BLOCKS.put("Banner czerwony", p -> isBanner(p, "red") || p.equals("red_wall_banner"));
+        BLOCKS.put("Banner niebieski", p -> isBanner(p, "blue") || p.equals("blue_wall_banner"));
+        BLOCKS.put("Banner inny", p -> p.endsWith("_banner") && !p.startsWith("white_") && !p.startsWith("black_")
+                && !p.startsWith("red_") && !p.startsWith("blue_"));
         BLOCKS.put("Sculk", p -> p.startsWith("sculk"));
         BLOCKS.put("Zapadnie", p -> p.endsWith("_trapdoor"));
         BLOCKS.put("Drzwi", p -> p.endsWith("_door"));
+        BLOCKS.put("Szklo (glass)", p -> p.equals("glass") || p.equals("glass_pane") || p.equals("tinted_glass")
+                || p.endsWith("_stained_glass") || p.endsWith("_stained_glass_pane"));
         BLOCKS.put("Kowadla", p -> p.contains("anvil"));
-        BLOCKS.put("Skrzynie", p -> p.equals("chest") || p.equals("trapped_chest") || p.equals("ender_chest") || p.equals("barrel") || p.endsWith("shulker_box"));
-        BLOCKS.put("Plyty/Przyciski", p -> p.endsWith("_pressure_plate") || p.endsWith("_button"));
+        BLOCKS.put("Skrzynie", p -> p.equals("chest") || p.equals("trapped_chest") || p.equals("barrel") || p.endsWith("shulker_box"));
+        BLOCKS.put("Ender chest", p -> p.equals("ender_chest"));
+        BLOCKS.put("Plyty naciskowe", p -> p.endsWith("_pressure_plate"));
+        BLOCKS.put("Przyciski/Dzwignie", p -> p.endsWith("_button") || p.equals("lever"));
+        BLOCKS.put("Drabiny", p -> p.equals("ladder"));
+        BLOCKS.put("Winorosla/Rusztowania", p -> p.equals("vine") || p.equals("scaffolding") || p.endsWith("vines"));
         BLOCKS.put("Dripstone", p -> p.equals("pointed_dripstone"));
         BLOCKS.put("Dywany", p -> p.endsWith("_carpet"));
         BLOCKS.put("Lancuchy/Tripwire", p -> p.equals("chain") || p.startsWith("tripwire"));
@@ -39,17 +54,19 @@ public final class Trap {
         BLOCKS.put("Schody/Slaby", p -> p.endsWith("_stairs") || p.endsWith("_slab"));
         BLOCKS.put("Tloki", p -> p.contains("piston"));
         BLOCKS.put("Tabliczki", p -> p.endsWith("_sign"));
-        BLOCKS.put("Pochodnie/Dzwignie", p -> p.endsWith("torch") || p.equals("lever") || p.endsWith("lantern"));
+        BLOCKS.put("Pochodnie/Latarnie", p -> p.endsWith("torch") || p.endsWith("lantern"));
         BLOCKS.put("Tory", p -> p.endsWith("rail"));
         BLOCKS.put("Stoly/Piece", p -> Set.of("crafting_table", "furnace", "blast_furnace", "smoker", "smithing_table",
                 "cartography_table", "fletching_table", "loom", "grindstone", "stonecutter", "enchanting_table",
                 "lectern", "composter", "cauldron", "hopper").contains(p));
-        BLOCKS.put("Drabiny/Winorosla", p -> p.equals("ladder") || p.equals("vine") || p.equals("scaffolding") || p.endsWith("vines"));
 
-        ENTITIES.put("Item frame", p -> p.equals("item_frame") || p.equals("glow_item_frame"));
+        ENTITIES.put("Ramka na przedmiot", p -> p.equals("item_frame"));
+        ENTITIES.put("Swiecaca ramka", p -> p.equals("glow_item_frame"));
         ENTITIES.put("Obraz", p -> p.equals("painting"));
         ENTITIES.put("Wagonik", p -> p.equals("minecart"));
-        ENTITIES.put("Wagonik specjalny", p -> p.endsWith("_minecart"));
+        ENTITIES.put("Wagonik ze skrzynia", p -> p.equals("chest_minecart"));
+        ENTITIES.put("Wagonik z lejem", p -> p.equals("hopper_minecart"));
+        ENTITIES.put("Wagonik inny", p -> p.endsWith("_minecart") && !p.equals("chest_minecart") && !p.equals("hopper_minecart"));
         ENTITIES.put("Lodka", p -> p.endsWith("boat") || p.endsWith("raft"));
         ENTITIES.put("End crystal", p -> p.equals("end_crystal"));
         ENTITIES.put("Armor stand", p -> p.equals("armor_stand"));
@@ -72,9 +89,9 @@ public final class Trap {
         double nearest;
 
         final Setting.Blocks blocks = add(new Setting.Blocks("Bloki", List.copyOf(BLOCKS.keySet()),
-                Set.of("Obsidian", "Plotki", "Furtki", "Banery", "Sculk", "Pajeczyna", "Zapadnie", "Tabliczki")));
+                Set.of("Obsidian", "Placzacy obsidian", "Plotki", "Furtki", "Banner bialy", "Banner czarny", "Banner czerwony", "Banner niebieski", "Banner inny", "Sculk", "Pajeczyna", "Zapadnie", "Tabliczki")));
         final Setting.Blocks entities = add(new Setting.Blocks("Encje", List.copyOf(ENTITIES.keySet()),
-                Set.of("Item frame", "Obraz", "Wagonik", "Wagonik specjalny")));
+                Set.of("Ramka na przedmiot", "Swiecaca ramka", "Obraz", "Wagonik", "Wagonik ze skrzynia", "Wagonik z lejem", "Wagonik inny")));
         final Setting.Num range = add(new Setting.Num("Odleglosc (kratki)", 1, 12, 1, 4));
         final Setting.Num min = add(new Setting.Num("Min. do trapa", 1, 40, 1, 5));
         final Setting.Bool outline = add(new Setting.Bool("Podswietl w swiecie", true));
@@ -219,9 +236,9 @@ public final class Trap {
     // =====================================================================
     public static class Escape extends Module {
         final Setting.Blocks breakBlocks = add(new Setting.Blocks("Rozwalaj bloki", List.copyOf(BLOCKS.keySet()),
-                Set.of("Obsidian", "Plotki", "Furtki", "Banery", "Sculk", "Pajeczyna", "Zapadnie", "Tabliczki")));
+                Set.of("Obsidian", "Placzacy obsidian", "Plotki", "Furtki", "Banner bialy", "Banner czarny", "Banner czerwony", "Banner niebieski", "Banner inny", "Sculk", "Pajeczyna", "Zapadnie", "Tabliczki")));
         final Setting.Blocks breakEnt = add(new Setting.Blocks("Rozwalaj encje", List.copyOf(ENTITIES.keySet()),
-                Set.of("Item frame", "Obraz", "Wagonik", "Wagonik specjalny")));
+                Set.of("Ramka na przedmiot", "Swiecaca ramka", "Obraz", "Wagonik", "Wagonik ze skrzynia", "Wagonik z lejem", "Wagonik inny")));
         final Setting.Num radius = add(new Setting.Num("Zasieg szukania", 1, 4, 1, 2));
         final Setting.Bool only = add(new Setting.Bool("Tylko w trapie", true));
         final Setting.Bool floor = add(new Setting.Bool("Niszcz podloge", false));

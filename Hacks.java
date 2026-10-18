@@ -358,15 +358,20 @@ public final class Hacks {
         final Setting.Bool clouds = add(new Setting.Bool("Wylacz chmury", true));
         final Setting.Bool fast = add(new Setting.Bool("Grafika FAST", true));
         final Setting.Bool blend = add(new Setting.Bool("Biome blend 0", true));
+        final Setting.Bool ao = add(new Setting.Bool("Wylacz plynne swiatlo (AO)", true));
+        final Setting.Bool vsync = add(new Setting.Bool("Wylacz VSync", true));
+        final Setting.Bool uncap = add(new Setting.Bool("FPS bez limitu", true));
         final Setting.Bool limitView = add(new Setting.Bool("Limit dystansu renderu", false));
         final Setting.Num view = add(new Setting.Num("Dystans renderu (max)", 2, 32, 1, 10));
+        final Setting.Bool limitSim = add(new Setting.Bool("Limit dystansu symulacji", false));
+        final Setting.Num sim = add(new Setting.Num("Dystans symulacji (max)", 2, 32, 1, 6));
         final Setting.Bool limitEnt = add(new Setting.Bool("Limit dystansu encji", true));
         final Setting.Num ent = add(new Setting.Num("Dystans encji", 0.5, 5, 0.25, 1.0));
         boolean applied;
         int t;
-        Object oClouds, oGraphics;
-        Boolean oShadow;
-        Integer oBlend, oView;
+        Object oClouds, oGraphics, oAo;
+        Boolean oShadow, oVsync;
+        Integer oBlend, oView, oSim, oFps;
         Double oEnt;
 
         FpsBoost() { super("FPS Boost", "Visuals"); }
@@ -375,12 +380,20 @@ public final class Hacks {
             raw.setValue(((Enum<?>) raw.getValue()).getDeclaringClass().getEnumConstants()[0]);
         }
 
+        static void off(net.minecraft.client.option.SimpleOption raw) {
+            Object v = raw.getValue();
+            if (v instanceof Boolean) raw.setValue(false);
+            else if (v instanceof Enum<?> e) raw.setValue(e.getDeclaringClass().getEnumConstants()[0]);
+        }
+
         public void onTick() {
             var o = mc.options;
             if (!applied) {
                 oShadow = o.getEntityShadows().getValue(); oClouds = o.getCloudRenderMode().getValue();
                 oGraphics = o.getGraphicsMode().getValue(); oBlend = o.getBiomeBlendRadius().getValue();
                 oView = o.getViewDistance().getValue(); oEnt = o.getEntityDistanceScaling().getValue();
+                oAo = o.getAo().getValue(); oVsync = o.getEnableVsync().getValue();
+                oSim = o.getSimulationDistance().getValue(); oFps = o.getMaxFps().getValue();
                 applied = true;
             }
             if (t++ % 40 != 0) return;
@@ -388,7 +401,11 @@ public final class Hacks {
             if (clouds.value) first((net.minecraft.client.option.SimpleOption) o.getCloudRenderMode());
             if (fast.value) first((net.minecraft.client.option.SimpleOption) o.getGraphicsMode());
             if (blend.value) o.getBiomeBlendRadius().setValue(0);
+            if (ao.value) off((net.minecraft.client.option.SimpleOption) o.getAo());
+            if (vsync.value) o.getEnableVsync().setValue(false);
+            if (uncap.value) o.getMaxFps().setValue(260);
             if (limitView.value) o.getViewDistance().setValue(Math.min(oView, view.value.intValue()));
+            if (limitSim.value) o.getSimulationDistance().setValue(Math.min(oSim, sim.value.intValue()));
             if (limitEnt.value) o.getEntityDistanceScaling().setValue(Math.min(oEnt, ent.value));
         }
 
@@ -398,9 +415,13 @@ public final class Hacks {
             o.getEntityShadows().setValue(oShadow);
             ((net.minecraft.client.option.SimpleOption) o.getCloudRenderMode()).setValue(oClouds);
             ((net.minecraft.client.option.SimpleOption) o.getGraphicsMode()).setValue(oGraphics);
+            ((net.minecraft.client.option.SimpleOption) o.getAo()).setValue(oAo);
             o.getBiomeBlendRadius().setValue(oBlend);
             o.getViewDistance().setValue(oView);
+            o.getSimulationDistance().setValue(oSim);
             o.getEntityDistanceScaling().setValue(oEnt);
+            o.getEnableVsync().setValue(oVsync);
+            o.getMaxFps().setValue(oFps);
             applied = false;
         }
     }

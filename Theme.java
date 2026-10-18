@@ -32,6 +32,7 @@ public final class Theme {
                 "Potem w grze: Prawy Ctrl -> Ustawienia -> Motyw -> Przeladuj obrazki.\n");
         } catch (Exception ignored) {}
         bg = tex("gui.png", "gui_bg");
+        AnimBg.load();
         loadInvSrc();
     }
 

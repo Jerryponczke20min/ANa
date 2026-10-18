@@ -276,6 +276,7 @@ public final class Modules {
         public final Setting.Bool invOn = add(new Setting.Bool("Wlasny wyglad EQ", true));
         public final Setting.Num invDim = add(new Setting.Num("Przyciemnienie EQ", 0, 0.8, 0.05, 0.15));
         public final Setting.Bool invLines = add(new Setting.Bool("Linie slotow EQ", true));
+        public final Setting.Num panelAlpha = add(new Setting.Num("Przezroczystosc paneli", 0.3, 1.0, 0.05, 0.88));
         public final Setting.Bool reload = add(new Setting.Bool("Przeladuj obrazki", false));
         public final Setting.Num size = add(new Setting.Num("Rozmiar GUI", 0.6, 1.6, 0.05, 0.85));
         public final Setting.Bool anims = add(new Setting.Bool("Animacje GUI", true));

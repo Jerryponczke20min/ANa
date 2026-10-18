@@ -29,7 +29,7 @@ public final class Look {
     }
 
     public static class Sky extends Module {
-        final Setting.Mode style = add(new Setting.Mode("Styl", List.of("Kolor", "Tecza", "Wisnia", "Zachod", "Noc", "Mietowy"), "Kolor"));
+        final Setting.Mode style = add(new Setting.Mode("Styl", List.of("Kolor", "Tecza", "Wisnia", "Zachod", "Fiolet", "Zmierzch", "Noc", "Mietowy"), "Kolor"));
         final Setting.Num r = add(new Setting.Num("R", 0, 255, 1, 120));
         final Setting.Num g = add(new Setting.Num("G", 0, 255, 1, 170));
         final Setting.Num b = add(new Setting.Num("B", 0, 255, 1, 255));
@@ -42,6 +42,8 @@ public final class Look {
                 case "Tecza": return hue(speed.value, 0.55f);
                 case "Wisnia": return 0xFFB7D5;
                 case "Zachod": return 0xFF7A4A;
+                case "Fiolet": return 0x6A3FB5;
+                case "Zmierzch": return 0x3A2A6B;
                 case "Noc": return 0x0A0F2E;
                 case "Mietowy": return 0x7FFFD4;
                 default: return (r.value.intValue() << 16) | (g.value.intValue() << 8) | b.value.intValue();
@@ -52,7 +54,7 @@ public final class Look {
     /** Skiny itemow: generuje paczke zasobow .minecraft/resourcepacks/KSAWU23-Items. */
     public static class ItemSkins extends Module {
         public ItemSkins() {
-            super("Skiny itemow", "Visuals");
+            super("Texture Pack Maker", "Visuals");
             alwaysOn = true; enabled = true;
             action = () -> mc.setScreen(new ItemSkinScreen());
         }
@@ -115,29 +117,59 @@ public final class Look {
 }
 
 class ItemSkinScreen extends Screen {
-    static String itemS = "diamond_sword", rS = "255", gS = "120", bS = "0", status = "";
+    static final List<String> TYPES = List.of("Item", "Blok", "Slonce", "Ksiezyc", "Chmury", "Celownik", "Hotbar", "Zaznaczenie hotbara");
+    static String type = "Item", itemS = "diamond_sword", rS = "255", gS = "120", bS = "0", status = "";
     static boolean recolor = true;
 
-    ItemSkinScreen() { super(Text.literal("Skiny itemow")); }
+    ItemSkinScreen() { super(Text.literal("Texture Pack Maker")); }
 
     static File packDir() { return new File(MinecraftClient.getInstance().runDirectory, "resourcepacks/KSAWU23-Items"); }
 
-    static File texFile(String id) { return new File(packDir(), "assets/minecraft/textures/item/" + id + ".png"); }
+    static String path() {
+        String id = itemS.trim().toLowerCase();
+        return switch (type) {
+            case "Item" -> "textures/item/" + id + ".png";
+            case "Blok" -> "textures/block/" + id + ".png";
+            case "Slonce" -> "textures/environment/sun.png";
+            case "Ksiezyc" -> "textures/environment/moon_phases.png";
+            case "Chmury" -> "textures/environment/clouds.png";
+            case "Celownik" -> "textures/gui/sprites/hud/crosshair.png";
+            case "Hotbar" -> "textures/gui/sprites/hud/hotbar.png";
+            default -> "textures/gui/sprites/hud/hotbar_selection.png";
+        };
+    }
+
+    static int[] size() {
+        return switch (type) {
+            case "Ksiezyc" -> new int[]{128, 64};
+            case "Chmury" -> new int[]{256, 256};
+            case "Celownik" -> new int[]{15, 15};
+            case "Hotbar" -> new int[]{182, 22};
+            case "Zaznaczenie hotbara" -> new int[]{24, 23};
+            default -> new int[]{32, 32};
+        };
+    }
+
+    static File target() { return new File(packDir(), "assets/minecraft/" + path()); }
 
     static void ensurePack() throws Exception {
         File d = packDir();
-        new File(d, "assets/minecraft/textures/item").mkdirs();
-        File mc = new File(d, "pack.mcmeta");
-        if (!mc.exists()) java.nio.file.Files.writeString(mc.toPath(), "{\"pack\":{\"pack_format\":46,\"description\":\"KSAWU23 Items\"}}");
+        d.mkdirs();
+        File mcmeta = new File(d, "pack.mcmeta");
+        if (!mcmeta.exists()) java.nio.file.Files.writeString(mcmeta.toPath(), "{\"pack\":{\"pack_format\":46,\"description\":\"KSAWU23 Texture Pack\"}}");
+        target().getParentFile().mkdirs();
     }
 
     static int num(String s) {
         try { return Math.max(0, Math.min(255, Integer.parseInt(s.trim()))); } catch (Exception e) { return 255; }
     }
 
-    static String id() { return itemS.trim().toLowerCase(); }
-
-    static boolean validItem() { return Registries.ITEM.containsId(Identifier.of("minecraft", id())); }
+    static boolean valid() {
+        String id = itemS.trim().toLowerCase();
+        if (type.equals("Item")) return Registries.ITEM.containsId(Identifier.of("minecraft", id));
+        if (type.equals("Blok")) return Registries.BLOCK.containsId(Identifier.of("minecraft", id));
+        return true;
+    }
 
     TextFieldWidget field(int x, int y, int w, String init, java.util.function.Consumer<String> l) {
         TextFieldWidget f = new TextFieldWidget(textRenderer, x, y, w, 18, Text.literal(""));
@@ -153,28 +185,31 @@ class ItemSkinScreen extends Screen {
         field(cx - 150, 76, 94, rS, s -> rS = s);
         field(cx - 50, 76, 94, gS, s -> gS = s);
         field(cx + 56, 76, 94, bS, s -> bS = s);
+        addDrawableChild(ButtonWidget.builder(Text.literal("Typ: " + type), b -> {
+            type = TYPES.get((TYPES.indexOf(type) + 1) % TYPES.size()); clearAndInit();
+        }).dimensions(cx - 150, 102, 146, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Tryb: " + (recolor ? "Przemalowanie" : "Mnozenie")), b -> {
             recolor = !recolor; clearAndInit();
-        }).dimensions(cx - 150, 102, 146, 20).build());
+        }).dimensions(cx + 4, 102, 146, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Zastosuj kolor"), b -> applyColor())
-                .dimensions(cx + 4, 102, 146, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Usun skin tego itemu"), b -> {
-            status = texFile(id()).delete() ? "Usunieto skin: " + id() : "Ten item nie ma skina";
-        }).dimensions(cx - 150, 126, 146, 20).build());
+                .dimensions(cx - 150, 126, 146, 20).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Usun ten skin"), b -> {
+            status = target().delete() ? "Usunieto: " + path() : "Brak skina dla: " + path();
+        }).dimensions(cx + 4, 126, 146, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Przeladuj zasoby"), b -> {
             status = "Przeladowuje zasoby...";
             MinecraftClient.getInstance().reloadResources();
-        }).dimensions(cx + 4, 126, 146, 20).build());
+        }).dimensions(cx - 150, 150, 300, 20).build());
     }
 
     void applyColor() {
         try {
-            if (!validItem()) { status = "Nie ma takiego itemu: " + id(); return; }
+            if (!valid()) { status = "Nie ma takiego " + (type.equals("Item") ? "itemu" : "bloku") + ": " + itemS; return; }
             BufferedImage src;
             try (InputStream in = MinecraftClient.getInstance().getResourceManager()
-                    .getResource(Identifier.of("minecraft", "textures/item/" + id() + ".png")).get().getInputStream()) {
+                    .getResource(Identifier.of("minecraft", path())).get().getInputStream()) {
                 src = ImageIO.read(in);
-            } catch (Exception e) { status = "Ten item nie ma zwyklej tekstury (textures/item/" + id() + ".png)"; return; }
+            } catch (Exception e) { status = "Brak oryginalnej tekstury: " + path(); return; }
             int cr = num(rS), cg = num(gS), cb = num(bS);
             BufferedImage out = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
             for (int x = 0; x < src.getWidth(); x++) for (int y = 0; y < src.getHeight(); y++) {
@@ -188,24 +223,27 @@ class ItemSkinScreen extends Screen {
                 out.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
             }
             ensurePack();
-            ImageIO.write(out, "png", texFile(id()));
-            status = "Zapisano skin " + id() + ". Kliknij 'Przeladuj zasoby'.";
+            ImageIO.write(out, "png", target());
+            status = "Zapisano: " + path() + ". Kliknij 'Przeladuj zasoby'.";
         } catch (Exception e) { status = "Blad: " + e.getMessage(); }
     }
 
     void applyImage(Path path) {
         try {
-            if (!validItem()) { status = "Najpierw wpisz poprawny item (np. diamond_sword)"; return; }
+            if (!valid()) { status = "Najpierw wpisz poprawna nazwe (np. diamond_sword / stone)"; return; }
             BufferedImage img = ImageIO.read(path.toFile());
             if (img == null) { status = "To nie jest obrazek"; return; }
-            BufferedImage out = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+            int[] sz = size();
+            BufferedImage out = new BufferedImage(sz[0], sz[1], BufferedImage.TYPE_INT_ARGB);
             java.awt.Graphics2D g = out.createGraphics();
             g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            g.drawImage(img, 0, 0, 32, 32, null);
+            if (type.equals("Ksiezyc")) {
+                for (int i = 0; i < 8; i++) g.drawImage(img, (i % 4) * 32, (i / 4) * 32, 32, 32, null);
+            } else g.drawImage(img, 0, 0, sz[0], sz[1], null);
             g.dispose();
             ensurePack();
-            ImageIO.write(out, "png", texFile(id()));
-            status = "Obrazek ustawiony jako skin " + id() + ". Kliknij 'Przeladuj zasoby'.";
+            ImageIO.write(out, "png", target());
+            status = "Obrazek zapisany jako " + path() + ". Kliknij 'Przeladuj zasoby'.";
         } catch (Exception e) { status = "Blad: " + e.getMessage(); }
     }
 
@@ -217,14 +255,15 @@ class ItemSkinScreen extends Screen {
     public void render(DrawContext c, int mx, int my, float dt) {
         super.render(c, mx, my, dt);
         int cx = width / 2;
-        c.drawCenteredTextWithShadow(textRenderer, "Skiny itemow - kolor albo wlasny obrazek", cx, 14, Theme.color());
-        c.drawTextWithShadow(textRenderer, "Item (np. diamond_sword, golden_apple, bow)", cx - 150, 30, 0xFFAAAAAA);
+        boolean needsName = type.equals("Item") || type.equals("Blok");
+        c.drawCenteredTextWithShadow(textRenderer, "Texture Pack Maker - kolor albo wlasny obrazek", cx, 14, Theme.color());
+        c.drawTextWithShadow(textRenderer, needsName ? "Nazwa (np. diamond_sword, golden_apple, stone)" : "Nazwa niepotrzebna dla tego typu", cx - 150, 30, 0xFFAAAAAA);
         c.drawTextWithShadow(textRenderer, "R", cx - 150, 66, 0xFFAAAAAA);
         c.drawTextWithShadow(textRenderer, "G", cx - 50, 66, 0xFFAAAAAA);
         c.drawTextWithShadow(textRenderer, "B", cx + 56, 66, 0xFFAAAAAA);
-        c.drawCenteredTextWithShadow(textRenderer, "Przeciagnij PNG/JPG na to okno = obrazek jako tekstura wpisanego itemu", cx, 156, 0xFFCCCCCC);
-        c.drawCenteredTextWithShadow(textRenderer, "Skiny trafiaja do paczki zasobow KSAWU23-Items. Wlacz ja raz w", cx, 172, 0xFF888888);
-        c.drawCenteredTextWithShadow(textRenderer, "Opcje > Paczki zasobow (przenies na gore), potem klikaj 'Przeladuj zasoby'.", cx, 184, 0xFF888888);
-        if (!status.isEmpty()) c.drawCenteredTextWithShadow(textRenderer, status, cx, 204, 0xFF55FF55);
+        c.drawCenteredTextWithShadow(textRenderer, "Przeciagnij PNG/JPG na to okno = obrazek jako tekstura (typ: " + type + ")", cx, 180, 0xFFCCCCCC);
+        c.drawCenteredTextWithShadow(textRenderer, "Plik: " + path(), cx, 194, 0xFF888888);
+        c.drawCenteredTextWithShadow(textRenderer, "Paczka KSAWU23-Items: wlacz raz w Opcje > Paczki zasobow (przenies na gore).", cx, 208, 0xFF888888);
+        if (!status.isEmpty()) c.drawCenteredTextWithShadow(textRenderer, status, cx, 226, 0xFF55FF55);
     }
 }
