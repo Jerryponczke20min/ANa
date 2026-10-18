@@ -2,6 +2,6 @@
   "required": true,
   "package": "pl.ksawu23.ana.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": ["EntityMixin", "ClientPlayerEntityMixin"],
+  "client": ["EntityMixin", "ClientPlayerEntityMixin", "ClientWorldMixin"],
   "injectors": { "defaultRequire": 0 }
 }

@@ -31,6 +31,7 @@ public final class Modules {
     public static Misc.NoInteract noInteract;
     public static More.Freecam freecam;
     public static Pvp.Criticals crit;
+    public static Look.Sky sky;
 
     static <M extends Module> M reg(M m) { ALL.add(m); return m; }
 
@@ -78,6 +79,10 @@ public final class Modules {
         reg(new Hud.ArmorHud());
         reg(new Hud.InfoHud());
         reg(new Hud.AntiLag());
+        sky = reg(new Look.Sky());
+        reg(new Look.ItemSkins());
+        reg(new Look.ParticleTrail());
+        reg(new Look.BlockOutline());
         reg(new NoParticles());
         reg(new Fullbright());
         reg(new KeybindHud());
@@ -91,10 +96,11 @@ public final class Modules {
 
     public static class AutoDripstone extends Module {
         final Setting.Blocks targets = add(new Setting.Blocks("Cele", Hacks.TARGETS, Set.of("Gracze")));
-        final Setting.Num range = add(new Setting.Num("Zasieg celu", 2, 8, 1, 5));
-        final Setting.Num height = add(new Setting.Num("Wysokosc nad celem", 2, 5, 1, 3));
-        final Setting.Num delay = add(new Setting.Num("Opoznienie (tick)", 1, 20, 1, 6));
-        final Setting.Mode release = add(new Setting.Mode("Zwolnienie", List.of("Otworz trapdoor", "Zlam podpore"), "Otworz trapdoor"));
+        final Setting.Bool requireTarget = add(new Setting.Bool("Wymagaj celu", false));
+        final Setting.Num range = add(new Setting.Num("Zasieg celu", 2, 10, 1, 6));
+        final Setting.Num scanH = add(new Setting.Num("Szukaj sufitu (bloki)", 2, 10, 1, 6));
+        final Setting.Num delay = add(new Setting.Num("Opoznienie (tick)", 1, 20, 1, 5));
+        final Setting.Mode release = add(new Setting.Mode("Zwolnienie", List.of("Otworz trapdoor", "Zlam podpore"), "Zlam podpore"));
         int cd, restore = -1;
 
         AutoDripstone() { super("Auto Dripstone", "Anarchia"); }
@@ -102,25 +108,41 @@ public final class Modules {
         public void onTick() {
             if (restore >= 0) { Util.select(restore); restore = -1; }
             if (cd-- > 0) return;
+
+            // punkt odniesienia: cel, a jesli go brak - blok na ktory patrzysz (albo 3 kratki przed Toba)
+            BlockPos origin = null;
             LivingEntity target = null; double best = Double.MAX_VALUE;
             for (Entity en : mc.world.getEntities()) {
                 if (!(en instanceof LivingEntity le) || le == mc.player || !le.isAlive() || !Hacks.valid(targets.value, le)) continue;
                 double d = le.squaredDistanceTo(mc.player);
                 if (d < best && d <= range.value * range.value) { best = d; target = le; }
             }
-            if (target == null) return;
-            BlockPos base = target.getBlockPos();
-            int h = height.value.intValue();
+            if (target != null) origin = target.getBlockPos();
+            else if (!requireTarget.value) {
+                if (mc.crosshairTarget instanceof net.minecraft.util.hit.BlockHitResult bhr
+                        && bhr.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK)
+                    origin = bhr.getBlockPos().offset(bhr.getSide());
+                else origin = mc.player.getBlockPos().offset(mc.player.getHorizontalFacing(), 3);
+            }
+            if (origin == null) return;
             cd = delay.value.intValue();
 
-            // 1) jest juz dripstone nad celem? -> zwolnij go
-            BlockPos drip = null, trap = null;
-            for (int dy = 2; dy <= h + 4; dy++) {
-                BlockPos p = base.up(dy);
+            // szukamy w gore: dripstone (jesli juz jest), trapdoor i pierwszy pelny blok = sufit
+            BlockPos drip = null, trap = null, ceil = null;
+            int h = scanH.value.intValue();
+            for (int dy = 1; dy <= h + 2; dy++) {
+                BlockPos p = origin.up(dy);
                 BlockState st = mc.world.getBlockState(p);
-                if (st.isOf(net.minecraft.block.Blocks.POINTED_DRIPSTONE)) drip = p;
-                else if (trap == null && Registries.BLOCK.getId(st.getBlock()).getPath().endsWith("_trapdoor") && Util.inReach(p)) trap = p;
+                if (st.isAir()) continue;
+                if (st.isOf(net.minecraft.block.Blocks.POINTED_DRIPSTONE)) { if (drip == null) drip = p; continue; }
+                if (Registries.BLOCK.getId(st.getBlock()).getPath().endsWith("_trapdoor")) {
+                    if (trap == null && Util.inReach(p)) trap = p;
+                    continue;
+                }
+                if (st.isSolidBlock(mc.world, p)) { ceil = p; break; }
             }
+
+            // 1) dripstone wisi -> zrzuc go
             if (drip != null) {
                 if (release.value.equals("Otworz trapdoor") && trap != null) {
                     mc.interactionManager.interactBlock(mc.player, net.minecraft.util.Hand.MAIN_HAND,
@@ -132,9 +154,10 @@ public final class Modules {
                 }
                 return;
             }
-            // 2) postaw dripstone nad celem
-            BlockPos pos = base.up(h);
-            if (!Util.inReach(pos) || !mc.world.getBlockState(pos).isAir()) return;
+            // 2) postaw dripstone pod sufitem (wisi z bloku nad nim)
+            if (ceil == null) return;
+            BlockPos pos = ceil.down();
+            if (!mc.world.getBlockState(pos).isAir() || !Util.inReach(pos)) return;
             int slot = Util.findHotbar(s -> s.isOf(Items.POINTED_DRIPSTONE));
             if (slot < 0) return;
             int cur = mc.player.getInventory().selectedSlot;

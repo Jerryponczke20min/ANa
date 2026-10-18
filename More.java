@@ -1,6 +1,9 @@
 package pl.ksawu23.ana;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.input.Input;
 import net.minecraft.client.network.OtherClientPlayerEntity;
@@ -33,7 +36,9 @@ public final class More {
         final Setting.Bool blockClicks = add(new Setting.Bool("Blokuj klikanie", true));
         OtherClientPlayerEntity cam;
         Input oldInput;
-        double cx, cy, cz;
+        double cx, cy, cz, lx, ly;
+        float cyaw, cpitch, pyaw, ppitch;
+        boolean haveBase;
         long last;
 
         Freecam() { super("Freecam", "Visuals"); }
@@ -45,6 +50,8 @@ public final class More {
             cam = new OtherClientPlayerEntity(mc.world, mc.player.getGameProfile());
             cam.copyPositionAndRotation(mc.player);
             cx = mc.player.getX(); cy = mc.player.getY(); cz = mc.player.getZ();
+            cyaw = pyaw = mc.player.getYaw(); cpitch = ppitch = mc.player.getPitch();
+            haveBase = false;
             oldInput = mc.player.input;
             mc.player.input = new FrozenInput();
             mc.setCameraEntity(cam);
@@ -54,6 +61,7 @@ public final class More {
         void stop() {
             if (mc.player != null) {
                 if (oldInput != null) mc.player.input = oldInput;
+                mc.player.setYaw(pyaw); mc.player.setPitch(ppitch);
                 mc.setCameraEntity(mc.player);
             }
             cam = null; oldInput = null;
@@ -67,24 +75,44 @@ public final class More {
             else if (mc.player == null || cam.getWorld() != mc.world) stop();
         }
 
-        // ruch kamery liczony co klatke - dzieki temu jest plynny
+        boolean down(KeyBinding kb, int glfwKey) {
+            return kb.isPressed() || (mc.currentScreen == null && InputUtil.isKeyPressed(mc.getWindow().getHandle(), glfwKey));
+        }
+
+        // wszystko liczone co klatke: obrot z kursora myszy (niezalezny od postaci) i ruch kamery
         public void onHud(DrawContext d) {
             if (cam == null || mc.player == null) return;
             long now = System.nanoTime();
             double dt = Math.min(0.1, (now - last) / 1e9);
             last = now;
-            float yaw = mc.player.getYaw(), pitch = mc.player.getPitch();
-            Vec3d fwd = Vec3d.fromPolar(pitch, yaw);
-            double rad = Math.toRadians(yaw);
+
+            if (mc.currentScreen == null && mc.mouse.isCursorLocked()) {
+                double[] x = new double[1], y = new double[1];
+                GLFW.glfwGetCursorPos(mc.getWindow().getHandle(), x, y);
+                if (haveBase) {
+                    double s = mc.options.getMouseSensitivity().getValue() * 0.6 + 0.2;
+                    double f = s * s * s * 8.0 * 0.15;
+                    cyaw += (float) ((x[0] - lx) * f);
+                    cpitch = (float) Math.max(-90, Math.min(90, cpitch + (y[0] - ly) * f));
+                }
+                lx = x[0]; ly = y[0]; haveBase = true;
+            } else haveBase = false;
+
+            // prawdziwa postac nie obraca sie razem z kamera
+            mc.player.setYaw(pyaw);
+            mc.player.setPitch(ppitch);
+
+            Vec3d fwd = Vec3d.fromPolar(cpitch, cyaw);
+            double rad = Math.toRadians(cyaw);
             Vec3d right = new Vec3d(-Math.cos(rad), 0, -Math.sin(rad));
             var o = mc.options;
             Vec3d mv = Vec3d.ZERO;
-            if (o.forwardKey.isPressed()) mv = mv.add(fwd);
-            if (o.backKey.isPressed()) mv = mv.subtract(fwd);
-            if (o.rightKey.isPressed()) mv = mv.add(right);
-            if (o.leftKey.isPressed()) mv = mv.subtract(right);
-            if (o.jumpKey.isPressed()) mv = mv.add(0, 1, 0);
-            if (o.sneakKey.isPressed()) mv = mv.add(0, -1, 0);
+            if (down(o.forwardKey, GLFW.GLFW_KEY_W)) mv = mv.add(fwd);
+            if (down(o.backKey, GLFW.GLFW_KEY_S)) mv = mv.subtract(fwd);
+            if (down(o.rightKey, GLFW.GLFW_KEY_D)) mv = mv.add(right);
+            if (down(o.leftKey, GLFW.GLFW_KEY_A)) mv = mv.subtract(right);
+            if (down(o.jumpKey, GLFW.GLFW_KEY_SPACE)) mv = mv.add(0, 1, 0);
+            if (down(o.sneakKey, GLFW.GLFW_KEY_LEFT_SHIFT)) mv = mv.add(0, -1, 0);
             if (mv.lengthSquared() > 0) {
                 mv = mv.normalize().multiply(speed.value * dt);
                 cx += mv.x; cy += mv.y; cz += mv.z;
@@ -92,8 +120,8 @@ public final class More {
             cam.setPosition(cx, cy, cz);
             cam.prevX = cx; cam.prevY = cy; cam.prevZ = cz;
             cam.lastRenderX = cx; cam.lastRenderY = cy; cam.lastRenderZ = cz;
-            cam.setYaw(yaw); cam.prevYaw = yaw;
-            cam.setPitch(pitch); cam.prevPitch = pitch;
+            cam.setYaw(cyaw); cam.prevYaw = cyaw;
+            cam.setPitch(cpitch); cam.prevPitch = cpitch;
         }
     }
 

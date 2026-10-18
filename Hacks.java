@@ -40,21 +40,23 @@ public final class Hacks {
 
     public static class KillAura extends Module {
         final Setting.Blocks targets = add(new Setting.Blocks("Cele", TARGETS, Set.of("Gracze")));
-        final Setting.Num range = add(new Setting.Num("Zasieg bicia", 2, 6, 0.1, 4.2));
+        final Setting.Num range = add(new Setting.Num("Zasieg bicia", 2, 6, 0.1, 3.1));
         final Setting.Mode prio = add(new Setting.Mode("Priorytet", List.of("Odleglosc", "Zycie"), "Odleglosc"));
-        final Setting.Mode rot = add(new Setting.Mode("Rotacje", List.of("Silent", "Lock", "Brak"), "Silent"));
-        final Setting.Bool walls = add(new Setting.Bool("Przez sciany", true));
+        final Setting.Mode rot = add(new Setting.Mode("Rotacje", List.of("Smooth", "Silent", "Lock", "Brak"), "Smooth"));
+        final Setting.Num turnSpeed = add(new Setting.Num("Max obrot (st/tick)", 5, 90, 1, 30));
+        final Setting.Bool onlyCross = add(new Setting.Bool("Bij tylko gdy celownik na celu", true));
+        final Setting.Bool rndCd = add(new Setting.Bool("Losowy cooldown", true));
+        final Setting.Bool walls = add(new Setting.Bool("Przez sciany", false));
         final Setting.Bool weapon = add(new Setting.Bool("Auto bron", true));
-        final Setting.Num cdMin = add(new Setting.Num("Min. cooldown", 0.5, 1.0, 0.01, 0.92));
+        final Setting.Num cdMin = add(new Setting.Num("Min. cooldown", 0.5, 1.0, 0.01, 0.9));
         final Setting.Bool follow = add(new Setting.Bool("Podazaj za celem", false));
         final Setting.Num followRange = add(new Setting.Num("Zasieg sledzenia", 3, 20, 1, 10));
         final Setting.Num keepDist = add(new Setting.Num("Trzymaj dystans", 1.5, 4, 0.1, 2.8));
         final Setting.Num followSpeed = add(new Setting.Num("Predkosc sledzenia", 0.5, 1.5, 0.05, 1.0));
         final Setting.Bool autoJump = add(new Setting.Bool("Auto skok przy przeszkodzie", true));
+        float nextCd = 0.92f;
 
         KillAura() { super("Kill Aura", "PVP"); }
-
-        boolean valid(net.minecraft.entity.LivingEntity e) { return Hacks.valid(targets.value, e); }
 
         float[] angles(Vec3d pos) {
             Vec3d d = pos.subtract(mc.player.getEyePos());
@@ -64,11 +66,11 @@ public final class Hacks {
 
         public void onTick() {
             if (mc.currentScreen != null || mc.interactionManager == null) return;
-            double search = follow.value ? Math.max(range.value, followRange.value) : range.value;
+            double search = follow.value ? Math.max(range.value, followRange.value) : range.value + 2;
             net.minecraft.entity.LivingEntity t = null; double bs = Double.MAX_VALUE;
             for (net.minecraft.entity.Entity en : mc.world.getEntities()) {
                 if (!(en instanceof net.minecraft.entity.LivingEntity le) || le == mc.player || !le.isAlive()) continue;
-                if (!valid(le) || mc.player.distanceTo(le) > search) continue;
+                if (!Hacks.valid(targets.value, le) || mc.player.distanceTo(le) > search) continue;
                 if (!walls.value && !mc.player.canSee(le)) continue;
                 double sc = prio.value.equals("Zycie") ? le.getHealth() : mc.player.distanceTo(le);
                 if (sc < bs) { bs = sc; t = le; }
@@ -85,20 +87,34 @@ public final class Hacks {
                 }
                 if (autoJump.value && mc.player.horizontalCollision && mc.player.isOnGround()) mc.player.jump();
             }
-            if (dist > range.value) return;
 
             float[] a = angles(t.getPos().add(0, t.getHeight() * 0.6, 0));
             if (rot.value.equals("Lock")) { mc.player.setYaw(a[0]); mc.player.setPitch(a[1]); }
-            if (mc.player.getAttackCooldownProgress(0.5f) < cdMin.value) return;
+            else if (rot.value.equals("Smooth")) {
+                // plynne dokrecanie w losowym tempie - wyglada jak reka gracza, nie jak "snap"
+                float ms = (float) (turnSpeed.value * (0.6 + 0.8 * Math.random()));
+                float dy = MathHelper.wrapDegrees(a[0] - mc.player.getYaw());
+                float dp = a[1] - mc.player.getPitch();
+                mc.player.setYaw(mc.player.getYaw() + Math.max(-ms, Math.min(ms, dy)));
+                mc.player.setPitch(MathHelper.clamp(mc.player.getPitch() + Math.max(-ms / 2, Math.min(ms / 2, dp)), -90f, 90f));
+            }
+
+            if (dist > range.value) return;
+            if (mc.player.getAttackCooldownProgress(0.5f) < nextCd) return;
+            if (onlyCross.value && !rot.value.equals("Silent")) {
+                boolean on = mc.crosshairTarget instanceof net.minecraft.util.hit.EntityHitResult ehr && ehr.getEntity() == t;
+                if (!on) return;
+            }
             if (weapon.value) {
                 int slot = Util.findHotbar(s -> s.isIn(ItemTags.SWORDS));
                 if (slot < 0) slot = Util.findHotbar(s -> s.isIn(ItemTags.AXES));
                 Util.select(slot);
             }
-            if (rot.value.equals("Silent"))   // serwer widzi, ze patrzysz na cel, a Twoja kamera sie nie rusza
+            if (rot.value.equals("Silent"))
                 mc.player.networkHandler.sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(a[0], a[1], mc.player.isOnGround(), mc.player.horizontalCollision));
             mc.interactionManager.attackEntity(mc.player, t);
             mc.player.swingHand(Hand.MAIN_HAND);
+            nextCd = rndCd.value ? (float) (cdMin.value + Math.random() * (1.0 - cdMin.value)) : cdMin.value.floatValue();
         }
     }
 
