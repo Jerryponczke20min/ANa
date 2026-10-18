@@ -100,11 +100,15 @@ public final class Waypoints {
         final Setting.Bool beam = add(new Setting.Bool("Wiazka w swiecie", true));
         final Setting.Num scale = add(new Setting.Num("Rozmiar napisow", 0.6, 2, 0.1, 1.0));
         final Setting.Bool open = add(new Setting.Bool("Otworz edytor (klik)", false));
+        final Setting.Bool delLast = add(new Setting.Bool("Usun ostatni (klik)", false));
+        final Setting.Bool delAll = add(new Setting.Bool("Usun wszystkie (klik)", false));
 
         public Mod() { super("Waypoints", "HUD"); enabled = true; }
 
         public void onTick() {
             if (open.value) { open.value = false; mc.setScreen(new WaypointScreen()); }
+            if (delLast.value) { delLast.value = false; if (!LIST.isEmpty()) { LIST.remove(LIST.size() - 1); save(); } }
+            if (delAll.value) { delAll.value = false; LIST.clear(); save(); }
         }
 
         public void onRender(WorldRenderContext c) {
@@ -170,6 +174,10 @@ class WaypointScreen extends Screen {
         return f;
     }
 
+    int rows() { return Math.max(1, (height - 156 - 30) / 22); }
+
+    void fixOff() { off = Math.max(0, Math.min(off, Math.max(0, Waypoints.LIST.size() - 1))); }
+
     @Override
     protected void init() {
         int cx = width / 2, y = 36;
@@ -201,24 +209,30 @@ class WaypointScreen extends Screen {
             } catch (Exception ignored) {}
         }).dimensions(cx - 150, y + 86, 300, 20).build());
 
-        int ly = y + 120;
-        int rows = Math.max(1, (height - ly - 10) / 22);
-        for (int i = off; i < Math.min(Waypoints.LIST.size(), off + rows); i++) {
+        // lista: [X] usun, [o] pokaz/ukryj, potem opis
+        int ly = 156;
+        for (int i = off; i < Math.min(Waypoints.LIST.size(), off + rows()); i++) {
             Waypoints.WP w = Waypoints.LIST.get(i);
             int ry = ly + (i - off) * 22;
-            addDrawableChild(ButtonWidget.builder(Text.literal(w.show ? "Ukryj" : "Pokaz"), b -> {
+            addDrawableChild(ButtonWidget.builder(Text.literal("X"), b -> {
+                Waypoints.LIST.remove(w);
+                Waypoints.save();
+                fixOff();
+                clearAndInit();
+            }).dimensions(cx - 150, ry, 22, 18).build());
+            addDrawableChild(ButtonWidget.builder(Text.literal(w.show ? "o" : "-"), b -> {
                 w.show = !w.show; Waypoints.save(); clearAndInit();
-            }).dimensions(cx + 56, ry, 46, 18).build());
-            addDrawableChild(ButtonWidget.builder(Text.literal("Usun"), b -> {
-                Waypoints.LIST.remove(w); Waypoints.save(); clearAndInit();
-            }).dimensions(cx + 106, ry, 44, 18).build());
+            }).dimensions(cx - 126, ry, 22, 18).build());
         }
+        addDrawableChild(ButtonWidget.builder(Text.literal("Usun wszystkie"), b -> {
+            Waypoints.LIST.clear(); Waypoints.save(); off = 0; clearAndInit();
+        }).dimensions(cx + 50, height - 24, 100, 18).build());
     }
 
     @Override
     public boolean mouseScrolled(double mx, double my, double h, double v) {
-        int n = Waypoints.LIST.size();
-        off = Math.max(0, Math.min(Math.max(0, n - 1), off - (int) Math.signum(v)));
+        off -= (int) Math.signum(v);
+        fixOff();
         clearAndInit();
         return true;
     }
@@ -232,18 +246,18 @@ class WaypointScreen extends Screen {
         c.drawTextWithShadow(textRenderer, "X", cx - 150, y + 24, 0xFFAAAAAA);
         c.drawTextWithShadow(textRenderer, "Y", cx - 50, y + 24, 0xFFAAAAAA);
         c.drawTextWithShadow(textRenderer, "Z", cx + 56, y + 24, 0xFFAAAAAA);
-        int ly = y + 120;
-        int rows = Math.max(1, (height - ly - 10) / 22);
+        c.drawTextWithShadow(textRenderer, "Lista (" + Waypoints.LIST.size() + ")   X = usun, o = pokaz/ukryj", cx - 150, 144, 0xFF9AA0AA);
+        int ly = 156;
         var pp = client.player;
-        for (int i = off; i < Math.min(Waypoints.LIST.size(), off + rows); i++) {
+        for (int i = off; i < Math.min(Waypoints.LIST.size(), off + rows()); i++) {
             Waypoints.WP w = Waypoints.LIST.get(i);
             int ry = ly + (i - off) * 22;
             double[] cur = Waypoints.toCur(w);
             String dist = pp == null ? "" : "  " + (int) Math.sqrt(Math.pow(cur[0] - pp.getX(), 2) + Math.pow(cur[1] - pp.getY(), 2) + Math.pow(cur[2] - pp.getZ(), 2)) + " kr.";
             String txt = w.name + " [" + w.dim + "] " + (int) w.x + ", " + (int) w.y + ", " + (int) w.z;
-            c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(txt, 200), cx - 150, ry + 1, w.show ? 0xFFFFFFFF : 0xFF777777);
-            c.drawTextWithShadow(textRenderer, "w tym wymiarze: " + (int) cur[0] + ", " + (int) cur[2] + dist, cx - 150, ry + 10, 0xFF999999);
+            c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(txt, 250), cx - 98, ry + 1, w.show ? 0xFFFFFFFF : 0xFF777777);
+            c.drawTextWithShadow(textRenderer, "tu: " + (int) cur[0] + ", " + (int) cur[2] + dist, cx - 98, ry + 10, 0xFF999999);
         }
-        c.drawCenteredTextWithShadow(textRenderer, "Kolko myszy przewija liste. Przejscie Overworld <-> Nether przelicza sie samo (x8).", cx, height - 12, 0xFF777777);
+        c.drawCenteredTextWithShadow(textRenderer, "Kolko myszy przewija liste. Overworld <-> Nether przelicza sie samo (x8).", cx, height - 40, 0xFF777777);
     }
 }
