@@ -32,6 +32,7 @@ public final class Modules {
     public static More.Freecam freecam;
     public static Pvp.Criticals crit;
     public static Look.Sky sky;
+    public static Privacy.Incognito incognito;
 
     static <M extends Module> M reg(M m) { ALL.add(m); return m; }
 
@@ -83,6 +84,11 @@ public final class Modules {
         reg(new Look.ItemSkins());
         reg(new Look.ParticleTrail());
         reg(new Look.BlockOutline());
+        incognito = reg(new Privacy.Incognito());
+        reg(new Look.FallingParticles());
+        reg(new Look.ChinaHat());
+        reg(new Look.JumpCircles());
+        reg(new Hud.Counters());
         reg(new NoParticles());
         reg(new Fullbright());
         reg(new KeybindHud());
@@ -277,6 +283,7 @@ public final class Modules {
         public final Setting.Num invDim = add(new Setting.Num("Przyciemnienie EQ", 0, 0.8, 0.05, 0.15));
         public final Setting.Bool invLines = add(new Setting.Bool("Linie slotow EQ", true));
         public final Setting.Num panelAlpha = add(new Setting.Num("Przezroczystosc paneli", 0.3, 1.0, 0.05, 0.88));
+        public final Setting.Bool aurora = add(new Setting.Bool("Animowane tlo domyslne", true));
         public final Setting.Bool reload = add(new Setting.Bool("Przeladuj obrazki", false));
         public final Setting.Num size = add(new Setting.Num("Rozmiar GUI", 0.6, 1.6, 0.05, 0.85));
         public final Setting.Bool anims = add(new Setting.Bool("Animacje GUI", true));

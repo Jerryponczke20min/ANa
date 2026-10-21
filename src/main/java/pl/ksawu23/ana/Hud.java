@@ -34,7 +34,7 @@ public final class Hud {
                 if (s == null) continue;
 
                 float hp = p.getHealth() + p.getAbsorptionAmount();
-                String name = p.getName().getString() + "  " + String.format("%.1f", hp);
+                String name = Privacy.nick(p) + "  " + String.format("%.1f", hp);
                 ItemStack main = p.getMainHandStack();
                 String heldName = held.value && !main.isEmpty() ? main.getName().getString() : "";
                 if (heldName.length() > 26) heldName = heldName.substring(0, 26);
@@ -189,6 +189,58 @@ public final class Hud {
                 l.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(mc.player)));
                 for (int i = lim; i < l.size(); i++) mc.world.removeEntity(l.get(i).getId(), Entity.RemovalReason.DISCARDED);
             }
+        }
+    }
+
+    /** Liczniki przedmiotow z ekwipunku (totemy, krysztaly, perly...) z ikonami. */
+    public static class Counters extends Module {
+        static final List<String> OPT = List.of("Totemy", "Krysztaly", "Zlote jablka", "Perly", "Butelki XP", "Obsydian", "Fajerwerki");
+        final Setting.Blocks which = add(new Setting.Blocks("Pokaz", OPT, Set.of("Totemy", "Krysztaly", "Perly")));
+        final Setting.Num x = add(new Setting.Num("X", 0, 900, 1, 4));
+        final Setting.Num y = add(new Setting.Num("Y", 0, 500, 1, 90));
+        final Setting.Num scale = add(new Setting.Num("Rozmiar", 0.6, 2.5, 0.1, 1.0));
+        final Setting.Bool vertical = add(new Setting.Bool("Pionowo", true));
+
+        Counters() { super("Liczniki itemow", "HUD"); }
+
+        net.minecraft.item.Item[] items(String k) {
+            return switch (k) {
+                case "Totemy" -> new net.minecraft.item.Item[]{net.minecraft.item.Items.TOTEM_OF_UNDYING};
+                case "Krysztaly" -> new net.minecraft.item.Item[]{net.minecraft.item.Items.END_CRYSTAL};
+                case "Zlote jablka" -> new net.minecraft.item.Item[]{net.minecraft.item.Items.GOLDEN_APPLE, net.minecraft.item.Items.ENCHANTED_GOLDEN_APPLE};
+                case "Perly" -> new net.minecraft.item.Item[]{net.minecraft.item.Items.ENDER_PEARL};
+                case "Butelki XP" -> new net.minecraft.item.Item[]{net.minecraft.item.Items.EXPERIENCE_BOTTLE};
+                case "Obsydian" -> new net.minecraft.item.Item[]{net.minecraft.item.Items.OBSIDIAN};
+                default -> new net.minecraft.item.Item[]{net.minecraft.item.Items.FIREWORK_ROCKET};
+            };
+        }
+
+        int count(net.minecraft.item.Item[] its) {
+            int n = 0;
+            var inv = mc.player.getInventory();
+            for (int i = 0; i < inv.size(); i++) {
+                ItemStack s = inv.getStack(i);
+                for (net.minecraft.item.Item it : its) if (s.isOf(it)) n += s.getCount();
+            }
+            return n;
+        }
+
+        public void onHud(DrawContext d) {
+            var m = d.getMatrices();
+            m.push();
+            m.translate(x.value, y.value, 0);
+            m.scale(scale.value.floatValue(), scale.value.floatValue(), 1f);
+            int i = 0;
+            for (String k : OPT) {
+                if (!which.value.contains(k)) continue;
+                net.minecraft.item.Item[] its = items(k);
+                int n = count(its);
+                int ix = vertical.value ? 0 : i * 40, iy = vertical.value ? i * 18 : 0;
+                d.drawItem(new ItemStack(its[0]), ix, iy);
+                d.drawTextWithShadow(mc.textRenderer, String.valueOf(n), ix + 19, iy + 4, n == 0 ? 0xFFFF5555 : 0xFFFFFFFF);
+                i++;
+            }
+            m.pop();
         }
     }
 }

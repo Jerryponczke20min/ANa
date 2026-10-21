@@ -83,6 +83,11 @@ public class ClickGui extends Screen {
     public void filesDragged(List<Path> paths) {
         for (Path p : paths) {
             String n = p.getFileName().toString().toLowerCase();
+            if (n.endsWith(".mp4") || n.endsWith(".webm") || n.endsWith(".mov") || n.endsWith(".avi") || n.endsWith(".mkv")) {
+                status = "Filmy nie sa obslugiwane - zamien film na GIF (np. ezgif.com/video-to-gif) i przeciagnij GIF.";
+                statusT = 300;
+                return;
+            }
             if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".bmp") || n.endsWith(".gif")) {
                 pending = p;
                 return;
@@ -105,7 +110,12 @@ public class ClickGui extends Screen {
                 if (isGif) java.nio.file.Files.copy(pending, gf.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 else gf.delete();
             }
-            if (inv) ImageIO.write(img, "png", new File(dir, "inventory.png"));
+            if (inv) {
+                ImageIO.write(img, "png", new File(dir, "inventory.png"));
+                File ig = new File(dir, "inventory.gif");
+                if (isGif) java.nio.file.Files.copy(pending, ig.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                else ig.delete();
+            }
             Theme.load();
             status = isGif && gui ? "Ustawiono animowane tlo (GIF)!" : "Ustawiono obrazek!";
         } catch (Exception ex) {
@@ -113,6 +123,19 @@ public class ClickGui extends Screen {
         }
         statusT = 200;
         pending = null;
+    }
+
+    void drawAurora(DrawContext c, int acc, float e) {
+        long t = System.currentTimeMillis();
+        int rgb = acc & 0xFFFFFF;
+        int rgb2 = lerp(acc, 0xFFEC4899, 0.5f) & 0xFFFFFF;
+        for (int i = 0; i < 7; i++) {
+            double ph = t / 3200.0 + i * 1.1;
+            int bw = width / 5;
+            int x = (int) ((Math.sin(ph) * 0.5 + 0.5) * (width - bw));
+            int a1 = (int) (60 * e), a2 = (int) (14 * e);
+            c.fillGradient(x, 0, x + bw, height, (a2 << 24) | (i % 2 == 0 ? rgb : rgb2), (a1 << 24) | (i % 2 == 0 ? rgb2 : rgb));
+        }
     }
 
     @Override
@@ -136,7 +159,10 @@ public class ClickGui extends Screen {
         if (gif != null) c.drawTexture(RenderLayer::getGuiTextured, gif, 0, 0, 0f, 0f, width, height, width, height);
         else if (th.bgOn.value && Theme.bg != null) c.drawTexture(RenderLayer::getGuiTextured, Theme.bg, 0, 0, 0f, 0f, width, height, width, height);
         if (gif != null || (th.bgOn.value && Theme.bg != null)) c.fill(0, 0, width, height, 0x55000000);
-        else c.fill(0, 0, width, height, ((int) (0xAA * e) << 24));
+        else {
+            c.fill(0, 0, width, height, ((int) (0xCC * e) << 24));
+            if (th.aurora.value) drawAurora(c, acc, e);
+        }
 
         if (!pInit) {
             for (float[] p : P) {
@@ -383,6 +409,12 @@ public class ClickGui extends Screen {
                 y += 12;
             }
             return y;
+        }
+        if (s instanceof Setting.Str st) {
+            c.fill(x + 2, y, x + pw, y + 12, 0xCC202228);
+            c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(st.name + ": " + st.value, pw - 6), x + 5, y + 2, 0xFFFFFFFF);
+            hits.add(new Hit(x + 2, y, pw - 2, 12, cy1, cy2, () -> MinecraftClient.getInstance().setScreen(new AliasScreen(st)), null, null, null));
+            return y + 13;
         }
         return y;
     }

@@ -43,4 +43,11 @@ public abstract class Setting<T> {
         public JsonElement save() { JsonArray a = new JsonArray(); value.forEach(a::add); return a; }
         public void load(JsonElement e) { value.clear(); e.getAsJsonArray().forEach(x -> value.add(x.getAsString())); }
     }
+
+    /** Tekst edytowany w osobnym oknie (np. pseudonim). */
+    public static class Str extends Setting<String> {
+        public Str(String n, String v) { super(n, v); }
+        public JsonElement save() { return new JsonPrimitive(value); }
+        public void load(JsonElement e) { value = e.getAsString(); }
+    }
 }

@@ -2,6 +2,7 @@ package pl.ksawu23.ana;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
@@ -97,9 +98,30 @@ public class Client implements ClientModInitializer {
         AttackBlockCallback.EVENT.register((player, world, hand, pos, dir) ->
                 world.isClient && Modules.freecam.blocks() ? ActionResult.FAIL : ActionResult.PASS);
 
+        // Incognito: podmiana Twojego nicku w wiadomosciach na czacie
+        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            var inc = Modules.incognito;
+            if (inc != null && inc.enabled && !overlay && inc.needs(message)) {
+                MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(inc.swap(message));
+                return false;
+            }
+            return true;
+        });
+        ClientReceiveMessageEvents.ALLOW_CHAT.register((message, signed, sender, params, ts) -> {
+            var inc = Modules.incognito;
+            if (inc != null && inc.enabled && inc.needs(message)) {
+                MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(inc.swap(message));
+                return false;
+            }
+            return true;
+        });
+
         // wlasny wyglad ekwipunku: podmieniamy teksture panelu przy kazdym otwarciu
         ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
-            if (screen instanceof net.minecraft.client.gui.screen.ingame.InventoryScreen) Theme.applyInventory();
+            if (screen instanceof net.minecraft.client.gui.screen.ingame.InventoryScreen) {
+                Theme.applyInventory();
+                ScreenEvents.beforeRender(screen).register((s, ctx, mx, my, dt) -> Theme.tickInventory());
+            }
         });
     }
 }

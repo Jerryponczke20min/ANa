@@ -11,6 +11,7 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
 /** Pusty input - postac stoi w miejscu, gdy kamera Freecam lata sama. */
@@ -33,11 +34,13 @@ public final class More {
 
     public static class Freecam extends Module {
         final Setting.Num speed = add(new Setting.Num("Predkosc (bl/s)", 4, 100, 1, 20));
+        final Setting.Num smooth = add(new Setting.Num("Wygladzanie", 0, 1, 0.05, 0.6));
         final Setting.Bool blockClicks = add(new Setting.Bool("Blokuj klikanie", true));
         OtherClientPlayerEntity cam;
         Input oldInput;
         double cx, cy, cz, lx, ly;
-        float cyaw, cpitch, pyaw, ppitch;
+        float cyaw, cpitch, ryaw, rpitch, pyaw, ppitch;
+        Vec3d vel = Vec3d.ZERO;
         boolean haveBase;
         long last;
 
@@ -50,7 +53,9 @@ public final class More {
             cam = new OtherClientPlayerEntity(mc.world, mc.player.getGameProfile());
             cam.copyPositionAndRotation(mc.player);
             cx = mc.player.getX(); cy = mc.player.getY(); cz = mc.player.getZ();
-            cyaw = pyaw = mc.player.getYaw(); cpitch = ppitch = mc.player.getPitch();
+            cyaw = ryaw = pyaw = mc.player.getYaw();
+            cpitch = rpitch = ppitch = mc.player.getPitch();
+            vel = Vec3d.ZERO;
             haveBase = false;
             oldInput = mc.player.input;
             mc.player.input = new FrozenInput();
@@ -79,12 +84,13 @@ public final class More {
             return kb.isPressed() || (mc.currentScreen == null && InputUtil.isKeyPressed(mc.getWindow().getHandle(), glfwKey));
         }
 
-        // wszystko liczone co klatke: obrot z kursora myszy (niezalezny od postaci) i ruch kamery
+        // co klatke: obrot z kursora, wygladzanie ruchu i obrotu, pozycja kamery
         public void onHud(DrawContext d) {
             if (cam == null || mc.player == null) return;
             long now = System.nanoTime();
-            double dt = Math.min(0.1, (now - last) / 1e9);
+            double dt = Math.min(0.05, (now - last) / 1e9);
             last = now;
+            if (dt <= 0) return;
 
             if (mc.currentScreen == null && mc.mouse.isCursorLocked()) {
                 double[] x = new double[1], y = new double[1];
@@ -92,18 +98,23 @@ public final class More {
                 if (haveBase) {
                     double s = mc.options.getMouseSensitivity().getValue() * 0.6 + 0.2;
                     double f = s * s * s * 8.0 * 0.15;
-                    cyaw += (float) ((x[0] - lx) * f);
-                    cpitch = (float) Math.max(-90, Math.min(90, cpitch + (y[0] - ly) * f));
+                    double dx = Math.max(-80, Math.min(80, x[0] - lx)), dy = Math.max(-80, Math.min(80, y[0] - ly));
+                    cyaw += (float) (dx * f);
+                    cpitch = (float) Math.max(-90, Math.min(90, cpitch + dy * f));
                 }
                 lx = x[0]; ly = y[0]; haveBase = true;
             } else haveBase = false;
 
-            // prawdziwa postac nie obraca sie razem z kamera
             mc.player.setYaw(pyaw);
             mc.player.setPitch(ppitch);
 
-            Vec3d fwd = Vec3d.fromPolar(cpitch, cyaw);
-            double rad = Math.toRadians(cyaw);
+            // plynny obrot (im wieksze wygladzanie, tym lagodniej)
+            double kr = 1 - Math.exp(-dt * (10 + (1 - smooth.value) * 60));
+            ryaw += MathHelper.wrapDegrees(cyaw - ryaw) * kr;
+            rpitch += (cpitch - rpitch) * kr;
+
+            Vec3d fwd = Vec3d.fromPolar(rpitch, ryaw);
+            double rad = Math.toRadians(ryaw);
             Vec3d right = new Vec3d(-Math.cos(rad), 0, -Math.sin(rad));
             var o = mc.options;
             Vec3d mv = Vec3d.ZERO;
@@ -113,15 +124,16 @@ public final class More {
             if (down(o.leftKey, GLFW.GLFW_KEY_A)) mv = mv.subtract(right);
             if (down(o.jumpKey, GLFW.GLFW_KEY_SPACE)) mv = mv.add(0, 1, 0);
             if (down(o.sneakKey, GLFW.GLFW_KEY_LEFT_SHIFT)) mv = mv.add(0, -1, 0);
-            if (mv.lengthSquared() > 0) {
-                mv = mv.normalize().multiply(speed.value * dt);
-                cx += mv.x; cy += mv.y; cz += mv.z;
-            }
+            Vec3d want = mv.lengthSquared() > 0 ? mv.normalize().multiply(speed.value) : Vec3d.ZERO;
+            double acc = 1 - Math.exp(-dt * (8 + (1 - smooth.value) * 40));
+            vel = vel.add(want.subtract(vel).multiply(acc));
+            cx += vel.x * dt; cy += vel.y * dt; cz += vel.z * dt;
+
             cam.setPosition(cx, cy, cz);
             cam.prevX = cx; cam.prevY = cy; cam.prevZ = cz;
             cam.lastRenderX = cx; cam.lastRenderY = cy; cam.lastRenderZ = cz;
-            cam.setYaw(cyaw); cam.prevYaw = cyaw;
-            cam.setPitch(cpitch); cam.prevPitch = cpitch;
+            cam.setYaw(ryaw); cam.prevYaw = ryaw;
+            cam.setPitch(rpitch); cam.prevPitch = rpitch;
         }
     }
 

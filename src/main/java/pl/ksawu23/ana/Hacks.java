@@ -465,6 +465,7 @@ public final class Hacks {
         CoordsHud() { super("Coords HUD", "HUD"); }
 
         public void onHud(net.minecraft.client.gui.DrawContext d) {
+            if (Modules.incognito != null && Modules.incognito.enabled && Modules.incognito.hideCoords.value) return;
             var m = d.getMatrices();
             m.push();
             m.translate(x.value, y.value, 0);

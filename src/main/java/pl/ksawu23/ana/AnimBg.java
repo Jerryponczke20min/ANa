@@ -18,7 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.*;
 
-/** Animowane tlo GUI z pliku .minecraft/ksawu23/gui.gif (klatki -> tekstury). */
+/** Obsluga animowanych GIF-ow: tlo GUI (gui.gif) oraz dekoder klatek dla EQ i Texture Pack Makera. */
 public final class AnimBg {
     static final List<Identifier> frames = new ArrayList<>();
     static final List<Integer> delays = new ArrayList<>();
@@ -32,14 +32,12 @@ public final class AnimBg {
         return o;
     }
 
-    public static void load() {
-        var mc = MinecraftClient.getInstance();
-        frames.clear(); delays.clear(); total = 0;
-        File f = new File(mc.runDirectory, "ksawu23/gui.gif");
-        if (!f.exists()) return;
+    /** Dekoduje GIF do skompozytowanych klatek (przeskalowanych do maxW). delaysMs dostaje czas kazdej zachowanej klatki w ms. */
+    public static List<BufferedImage> decode(File f, List<Integer> delaysMs, int maxFrames, int maxW) throws Exception {
+        List<BufferedImage> out = new ArrayList<>();
         try (ImageInputStream in = ImageIO.createImageInputStream(f)) {
             Iterator<ImageReader> it = ImageIO.getImageReadersByFormatName("gif");
-            if (!it.hasNext()) return;
+            if (!it.hasNext()) return out;
             ImageReader r = it.next();
             r.setInput(in, false);
             int n = r.getNumImages(true);
@@ -55,10 +53,10 @@ public final class AnimBg {
             if (cw <= 0 || ch <= 0) { BufferedImage f0 = r.read(0); cw = f0.getWidth(); ch = f0.getHeight(); }
 
             BufferedImage canvas = new BufferedImage(cw, ch, BufferedImage.TYPE_INT_ARGB);
-            int step = Math.max(1, (int) Math.ceil(n / 48.0));
-            int tw = Math.min(640, cw), th = Math.max(1, tw * ch / cw);
+            int step = Math.max(1, (int) Math.ceil(n / (double) maxFrames));
+            int tw = Math.min(maxW, cw), th = Math.max(1, tw * ch / cw);
             String prevDisp = "none";
-            int px = 0, py = 0, pw = 0, ph = 0, acc = 0, idx = 0;
+            int px = 0, py = 0, pw = 0, ph = 0, acc = 0;
             BufferedImage snap = null;
 
             for (int i = 0; i < n; i++) {
@@ -96,16 +94,32 @@ public final class AnimBg {
                     g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
                     g2.drawImage(canvas, 0, 0, tw, th, null);
                     g2.dispose();
-                    ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                    ImageIO.write(sm, "png", bo);
-                    NativeImage ni = NativeImage.read(new ByteArrayInputStream(bo.toByteArray()));
-                    Identifier id = Identifier.of("ksawu23", "gifbg_" + idx++);
-                    mc.getTextureManager().registerTexture(id, new NativeImageBackedTexture(ni));
-                    frames.add(id); delays.add(acc); total += acc;
+                    out.add(sm);
+                    delaysMs.add(acc);
                     acc = 0;
                 }
             }
             r.dispose();
+        }
+        return out;
+    }
+
+    public static void load() {
+        var mc = MinecraftClient.getInstance();
+        frames.clear(); delays.clear(); total = 0;
+        File f = new File(mc.runDirectory, "ksawu23/gui.gif");
+        if (!f.exists()) return;
+        try {
+            List<Integer> d = new ArrayList<>();
+            List<BufferedImage> fr = decode(f, d, 48, 640);
+            for (int i = 0; i < fr.size(); i++) {
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                ImageIO.write(fr.get(i), "png", bo);
+                NativeImage ni = NativeImage.read(new ByteArrayInputStream(bo.toByteArray()));
+                Identifier id = Identifier.of("ksawu23", "gifbg_" + i);
+                mc.getTextureManager().registerTexture(id, new NativeImageBackedTexture(ni));
+                frames.add(id); delays.add(d.get(i)); total += d.get(i);
+            }
         } catch (Exception e) {
             frames.clear(); delays.clear(); total = 0;
         }
