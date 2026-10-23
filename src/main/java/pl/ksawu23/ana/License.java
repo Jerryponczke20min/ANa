@@ -18,7 +18,7 @@ import java.util.function.Consumer;
  */
 public final class License {
     /** Adres serwera kluczy, np. "https://moj-serwer.onrender.com". Puste = brak blokady. USTAW PRZED BUDOWANIEM. */
-    public static final String SERVER_URL = "";
+    public static final String SERVER_URL = "https://ksawu23-keyserver.onrender.com";
 
     static final Gson G = new Gson();
     static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
