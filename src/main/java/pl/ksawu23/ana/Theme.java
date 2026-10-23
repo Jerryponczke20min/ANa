@@ -44,6 +44,7 @@ public final class Theme {
                 "Pliki: gui.png / gui.gif = tlo menu, inventory.png / inventory.gif = wyglad ekwipunku.\\n" +
                 "Filmy MP4 zamien na GIF (np. ezgif.com/video-to-gif).\\n");
         } catch (Exception ignored) {}
+        Logo.load();
         bg = tex("gui.png", "gui_bg");
         AnimBg.load();
         loadInvSrc();

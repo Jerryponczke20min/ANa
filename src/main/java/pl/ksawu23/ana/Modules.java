@@ -89,6 +89,7 @@ public final class Modules {
         reg(new Look.ChinaHat());
         reg(new Look.JumpCircles());
         reg(new Hud.Counters());
+        reg(new License.Mod());
         reg(new NoParticles());
         reg(new Fullbright());
         reg(new KeybindHud());

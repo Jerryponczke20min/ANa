@@ -40,6 +40,7 @@ public class Client implements ClientModInitializer {
         Modules.init();
         Config.load();
         Waypoints.load();
+        License.load();
 
         openKey = KeyBindingHelper.registerKeyBinding(
                 new KeyBinding("key.ksawu23.gui", GLFW.GLFW_KEY_RIGHT_CONTROL, "category.ksawu23"));
@@ -52,11 +53,18 @@ public class Client implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> { Config.save(); Waypoints.save(); });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-            while (openKey.wasPressed() || openKey2.wasPressed()) mc.setScreen(new ClickGui());
+            while (openKey.wasPressed() || openKey2.wasPressed()) mc.setScreen(License.ok() ? new ClickGui() : new KeyScreen());
             if (mc.player == null || mc.world == null) return;
             if (!greeted) {
                 greeted = true;
                 mc.player.sendMessage(Text.literal("[KSAWU23] Client Ana v2.0 zaladowany. Prawy Ctrl lub Prawy Shift = GUI."), false);
+                if (!License.ok()) mc.player.sendMessage(Text.literal("[KSAWU23] Brak klucza dostepu - nacisnij Prawy Ctrl i wpisz klucz."), false);
+            }
+            License.tick();
+            if (!License.ok()) {
+                for (Module m : Modules.ALL)
+                    if (m.enabled && !m.alwaysOn) { m.enabled = false; try { m.onDisable(); } catch (Throwable ignored) {} }
+                return;
             }
             for (Module m : Modules.ALL) {
                 try {
@@ -71,12 +79,13 @@ public class Client implements ClientModInitializer {
         });
 
         WorldRenderEvents.AFTER_TRANSLUCENT.register(ctx -> {
+            if (!License.ok()) return;
             for (Module m : Modules.ALL) if (m.enabled) { try { m.onRender(ctx); } catch (Throwable t) { fail(m, t); } }
         });
 
         HudRenderCallback.EVENT.register((ctx, tick) -> {
             MinecraftClient mc = MinecraftClient.getInstance();
-            if (mc.player == null || mc.options.hudHidden) return;
+            if (mc.player == null || mc.options.hudHidden || !License.ok()) return;
             for (Module m : Modules.ALL) if (m.enabled) { try { m.onHud(ctx); } catch (Throwable t) { fail(m, t); } }
         });
 

@@ -234,10 +234,10 @@ public final class Look {
 class ItemSkinScreen extends Screen {
     static final List<String> TYPES = List.of("Item", "Blok", "Slonce", "Ksiezyc", "Chmury", "Celownik", "Hotbar", "Zaznaczenie hotbara", "Niebo (skybox)");
     static final List<String> OVERLAYS = List.of("Maska + cieniowanie", "Maska (czysty obrazek)", "Kwadrat");
-    static final int[] RES = {16, 32, 64, 128};
+    static final int[] RES = {16, 32, 64, 128, 256};
     static String type = "Item", overlay = OVERLAYS.get(0), itemS = "diamond_sword", rS = "255", gS = "120", bS = "0", status = "";
     static boolean recolor = true;
-    static int resIdx = 2;
+    static int resIdx = 3, thick = 2;
 
     ItemSkinScreen() { super(Text.literal("Texture Pack Maker")); }
 
@@ -298,29 +298,77 @@ class ItemSkinScreen extends Screen {
         } catch (Exception e) { return null; }
     }
 
-    /** Naklada obrazek na ksztalt itemu: przezroczystosc z oryginalu, kolory z obrazka (opcjonalnie z cieniowaniem). */
-    static BufferedImage compose(BufferedImage frame, BufferedImage mask, int res) {
-        BufferedImage sc = new BufferedImage(res, res, BufferedImage.TYPE_INT_ARGB);
-        java.awt.Graphics2D g = sc.createGraphics();
-        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        g.drawImage(frame, 0, 0, res, res, null);
+    static BufferedImage draw(BufferedImage src, int w, int h, Object hint) {
+        BufferedImage o = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g = o.createGraphics();
+        g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, hint);
+        g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+        g.drawImage(src, 0, 0, w, h, null);
         g.dispose();
+        return o;
+    }
+
+    /** Skalowanie w wysokiej jakosci: stopniowe zmniejszanie, na koniec bicubic. */
+    static BufferedImage scaleHQ(BufferedImage src, int w, int h) {
+        BufferedImage cur = src;
+        while (cur.getWidth() > w * 2 || cur.getHeight() > h * 2)
+            cur = draw(cur, Math.max(w, cur.getWidth() / 2), Math.max(h, cur.getHeight() / 2), java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        return draw(cur, w, h, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    }
+
+    static BufferedImage cropSquare(BufferedImage s) {
+        int n = Math.min(s.getWidth(), s.getHeight());
+        return s.getSubimage((s.getWidth() - n) / 2, (s.getHeight() - n) / 2, n, n);
+    }
+
+    static float smooth(float e0, float e1, float x) {
+        float t = Math.max(0f, Math.min(1f, (x - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+    }
+
+    /** Pogrubienie ksztaltu (maksymalny filtr w promieniu k) - wiecej obrazka wchodzi w ksztalt itemu. */
+    static float[] dilate(float[] a, int res, int k) {
+        float[] tmp = new float[a.length], out = new float[a.length];
+        for (int y = 0; y < res; y++) for (int x = 0; x < res; x++) {
+            float m = 0;
+            for (int d = -k; d <= k; d++) { int xx = x + d; if (xx >= 0 && xx < res) m = Math.max(m, a[y * res + xx]); }
+            tmp[y * res + x] = m;
+        }
+        for (int y = 0; y < res; y++) for (int x = 0; x < res; x++) {
+            float m = 0;
+            for (int d = -k; d <= k; d++) { int yy = y + d; if (yy >= 0 && yy < res) m = Math.max(m, tmp[yy * res + x]); }
+            out[y * res + x] = m;
+        }
+        return out;
+    }
+
+    /** Naklada obrazek na ksztalt itemu: wygladzona, wysokiej rozdzielczosci maska + anty-aliasing krawedzi. */
+    static BufferedImage compose(BufferedImage frame, BufferedImage mask, int res) {
+        BufferedImage sc = scaleHQ(cropSquare(frame), res, res);
         if (mask == null) return sc;
-        int mw = mask.getWidth(), mh = Math.min(mask.getHeight(), mask.getWidth());
+        int mh = Math.min(mask.getHeight(), mask.getWidth());
+        BufferedImage ms = scaleHQ(mask.getSubimage(0, 0, mask.getWidth(), mh), res, res);
         boolean shade = overlay.startsWith("Maska +");
+        float[] al = new float[res * res];
+        for (int y = 0; y < res; y++) for (int x = 0; x < res; x++)
+            al[y * res + x] = smooth(0.32f, 0.68f, (ms.getRGB(x, y) >>> 24) / 255f);
+        if (thick > 0) al = dilate(al, res, Math.max(1, thick * res / 64));
         BufferedImage out = new BufferedImage(res, res, BufferedImage.TYPE_INT_ARGB);
-        for (int x = 0; x < res; x++) for (int y = 0; y < res; y++) {
-            int mp = mask.getRGB(x * mw / res, y * mh / res);
-            int a = mp >>> 24;
-            if (a == 0) continue;
+        for (int y = 0; y < res; y++) for (int x = 0; x < res; x++) {
+            float a = al[y * res + x];
+            if (a <= 0.01f) continue;
             int ip = sc.getRGB(x, y);
-            int r = (ip >> 16) & 255, gg = (ip >> 8) & 255, b = ip & 255;
+            int r = (ip >> 16) & 255, g = (ip >> 8) & 255, b = ip & 255;
             if (shade) {
-                float l = (0.299f * ((mp >> 16) & 255) + 0.587f * ((mp >> 8) & 255) + 0.114f * (mp & 255)) / 255f;
-                float f = 0.5f + 0.6f * l;
-                r = Math.min(255, (int) (r * f)); gg = Math.min(255, (int) (gg * f)); b = Math.min(255, (int) (b * f));
+                int mp = ms.getRGB(x, y);
+                float f = 0.85f;
+                if ((mp >>> 24) > 128) {
+                    float l = (0.299f * ((mp >> 16) & 255) + 0.587f * ((mp >> 8) & 255) + 0.114f * (mp & 255)) / 255f;
+                    f = 0.55f + 0.55f * l;
+                }
+                r = Math.min(255, (int) (r * f)); g = Math.min(255, (int) (g * f)); b = Math.min(255, (int) (b * f));
             }
-            out.setRGB(x, y, (a << 24) | (r << 16) | (gg << 8) | b);
+            out.setRGB(x, y, ((int) (a * 255) << 24) | (r << 16) | (g << 8) | b);
         }
         return out;
     }
@@ -355,10 +403,13 @@ class ItemSkinScreen extends Screen {
                 .dimensions(cx - 150, 150, 146, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Usun ten skin"), b -> deleteSkin())
                 .dimensions(cx + 4, 150, 146, 20).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Pogrubienie: " + thick), b -> {
+            thick = (thick + 1) % 7; clearAndInit();
+        }).dimensions(cx - 150, 174, 146, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Przeladuj zasoby"), b -> {
             status = "Przeladowuje zasoby...";
             MinecraftClient.getInstance().reloadResources();
-        }).dimensions(cx - 150, 174, 300, 20).build());
+        }).dimensions(cx + 4, 174, 146, 20).build());
     }
 
     void deleteSkin() {
@@ -424,7 +475,7 @@ class ItemSkinScreen extends Screen {
             if (!valid()) { status = "Najpierw wpisz poprawna nazwe (np. diamond_sword / stone)"; return; }
             List<Integer> delays = new ArrayList<>();
             List<BufferedImage> frames = new ArrayList<>();
-            if (fn.endsWith(".gif")) frames = AnimBg.decode(path.toFile(), delays, 24, 256);
+            if (fn.endsWith(".gif")) frames = AnimBg.decode(path.toFile(), delays, RES[resIdx] >= 128 ? 12 : 24, 512);
             if (frames.isEmpty()) {
                 BufferedImage img = ImageIO.read(path.toFile());
                 if (img == null) { status = "To nie jest obrazek"; return; }
@@ -480,7 +531,7 @@ class ItemSkinScreen extends Screen {
         c.drawTextWithShadow(textRenderer, "G", cx - 50, 66, 0xFFAAAAAA);
         c.drawTextWithShadow(textRenderer, "B", cx + 56, 66, 0xFFAAAAAA);
         c.drawCenteredTextWithShadow(textRenderer, "Przeciagnij PNG/JPG/GIF na to okno = obrazek jako tekstura (typ: " + type + ")", cx, 204, 0xFFCCCCCC);
-        c.drawCenteredTextWithShadow(textRenderer, "Nakladka: obrazek przyjmuje ksztalt itemu (np. miecza). GIF = animowana tekstura.", cx, 218, 0xFF999999);
+        c.drawCenteredTextWithShadow(textRenderer, "Nakladka: obrazek w ksztalcie itemu. Pogrubienie = wiecej obrazka widac. GIF = animacja.", cx, 218, 0xFF999999);
         c.drawCenteredTextWithShadow(textRenderer, "Plik: " + path(), cx, 232, 0xFF888888);
         c.drawCenteredTextWithShadow(textRenderer, "Paczka KSAWU23-Items: wlacz raz w Opcje > Paczki zasobow (przenies na gore).", cx, 246, 0xFF888888);
         if (!status.isEmpty()) c.drawCenteredTextWithShadow(textRenderer, status, cx, 264, 0xFF55FF55);

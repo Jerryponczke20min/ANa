@@ -214,11 +214,14 @@ public class ClickGui extends Screen {
         c.fillGradient(wx, wy, wx + ww, wy + 2, acc, (accRgb) | 0x00000000);
 
         // pasek boczny: tytul i nawigacja
-        text(c, "KSAWU23", wx + 10, wy + 10, 1.6f, acc);
-        text(c, "CLIENT ANA", wx + 11, wy + 26, 0.9f, 0xFFFFFFFF);
-        text(c, "more than just a client", wx + 11, wy + 38, 0.65f, 0xFF7A7F88);
+        int logoH = Logo.draw(c, wx + 8, wy + 6, sbw - 16);
+        if (logoH == 0) {
+            text(c, "KSAWU23", wx + 10, wy + 10, 1.6f, acc);
+            text(c, "CLIENT ANA", wx + 11, wy + 26, 0.9f, 0xFFFFFFFF);
+        }
+        text(c, "more than just a client", wx + 11, logoH > 0 ? wy + 8 + logoH : wy + 38, 0.65f, 0xFF7A7F88);
         for (int i = 0; i <= CATS.length; i++) {
-            int ny = wy + 56 + i * 22;
+            int ny = wy + 64 + i * 22;
             boolean selT = tab == i, hv = mxl >= wx && mxl < wx + sbw && myl >= ny && myl < ny + 20;
             if (selT) c.fill(wx + 4, ny, wx + sbw - 4, ny + 20, (0x55 << 24) | accRgb);
             else if (hv) c.fill(wx + 4, ny, wx + sbw - 4, ny + 20, 0x22FFFFFF);
